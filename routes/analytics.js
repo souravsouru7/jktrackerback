@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const Entry = require('../Models/Entry');
+const Entry = require('../models/Entry');
 
 // Monthly Expenses Breakdown for specific project
 router.get('/monthly-expenses', async (req, res) => {
