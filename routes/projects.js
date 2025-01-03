@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const Project = require('../Models/Project');
-const Entry = require('../Models/Entry'); // Add this line
+const Project = require('../models/Project');
+const Entry = require('../models/Entry'); // Add this line
 const auth = require('../middleware/auth');
 
 // Create a new project
