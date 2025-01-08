@@ -28,9 +28,21 @@ const interiorBillSchema = new mongoose.Schema({
     paymentTerms: [{
         stage: String,
         percentage: Number,
-        amount: Number
+        amount: Number,
+        note: String
     }],
     termsAndConditions: [String]
+});
+
+// Add pre-save middleware to ensure termsAndConditions are strings
+interiorBillSchema.pre('save', function(next) {
+    // Convert terms and conditions to strings if they're objects
+    if (this.termsAndConditions) {
+        this.termsAndConditions = this.termsAndConditions.map(term => 
+            typeof term === 'object' && term.text ? term.text : String(term)
+        );
+    }
+    next();
 });
 
 module.exports = mongoose.model('InteriorBill', interiorBillSchema);
