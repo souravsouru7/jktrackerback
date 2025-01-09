@@ -153,9 +153,12 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         y: 0,
                         w: 515,
                         h: 100,
-                        color: '#F5EBE0'
+                    
+                        color: '#FFFFFF',  // Set the border color to white
+                        lineWidth: 1 
                     }]
                 },
+             
                 {
                     columns: [
                         {
