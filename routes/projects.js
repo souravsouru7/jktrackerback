@@ -3,18 +3,28 @@ const router = express.Router();
 const Project = require('../models/Project');
 const Entry = require('../models/Entry'); // Add this line
 const auth = require('../middleware/auth');
-
-// Create a new project
+const mongoose = require('mongoose');
+// Update the create project route
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, budget } = req.body;
     const userId = req.user._id;
 
     if (!name) {
       return res.status(400).json({ message: 'Name is required' });
     }
 
-    const project = new Project({ userId, name, description });
+    // Validate budget if provided
+    if (budget && (isNaN(budget) || budget < 0)) {
+      return res.status(400).json({ message: 'Budget must be a positive number' });
+    }
+
+    const project = new Project({ 
+      userId, 
+      name, 
+      description,
+      budget: budget || 0 
+    });
     await project.save();
 
     res.status(201).json({ message: 'Project created successfully', project });
@@ -22,7 +32,6 @@ router.post('/', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
 // Get all projects for a user
 router.get('/', auth, async (req, res) => {
   try {
@@ -205,6 +214,70 @@ router.get('/user/total-calculations', auth, async (req, res) => {
     });
   }
 });
+
+
+router.get('/project-summary', async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ message: 'userId is required' });
+    }
+
+    // Get all projects for user
+    const projects = await Project.find({ userId });
+
+    // Calculate totals per project
+    const projectSummaries = await Promise.all(projects.map(async (project) => {
+      const entries = await Entry.aggregate([
+        {
+          $match: {
+            projectId: project._id,
+            userId: new mongoose.Types.ObjectId(userId)
+          }
+        },
+        {
+          $group: {
+            _id: '$type',
+            total: { $sum: '$amount' }
+          }
+        }
+      ]);
+
+      const income = entries.find(e => e._id === 'Income')?.total || 0;
+      const expenses = entries.find(e => e._id === 'Expense')?.total || 0;
+
+      return {
+        projectId: project._id,
+        projectName: project.name,
+        income,
+        expenses,
+        balance: income - expenses
+      };
+    }));
+
+    // Calculate overall totals
+    const totals = projectSummaries.reduce((acc, curr) => ({
+      totalIncome: acc.totalIncome + curr.income,
+      totalExpenses: acc.totalExpenses + curr.expenses,
+      totalBalance: acc.totalBalance + (curr.income - curr.expenses)
+    }), { totalIncome: 0, totalExpenses: 0, totalBalance: 0 });
+
+    res.status(200).json({
+      overall: totals,
+      projects: projectSummaries
+    });
+
+  } catch (error) {
+    console.error('Summary error:', error);
+    res.status(500).json({
+      message: 'Error calculating summary',
+      error: error.message
+    });
+  }
+});
+
+module.exports = router;
 
 
 module.exports = router;

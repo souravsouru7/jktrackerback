@@ -5,6 +5,7 @@ const projectSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   name: { type: String, required: true },
   description: { type: String },
+  budget: { type: Number, default: 0 },
 }, { timestamps: true });
 
 // Add pre-remove middleware to handle entry deletion
