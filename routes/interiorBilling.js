@@ -25,7 +25,11 @@ const formatCurrency = (amount) => `₹ ${amount.toLocaleString('en-IN')}`;
 router.post('/bills', auth, async (req, res) => {
     try {
         const {
+            title,
             customerName,
+            customerEmail,
+            customerPhone,
+            customerAddress,
             items,
             companyDetails,
             paymentTerms,
@@ -55,7 +59,11 @@ router.post('/bills', auth, async (req, res) => {
 
         const bill = new InteriorBill({
             billNumber,
+            title,
             customerName,
+            customerEmail,
+            customerPhone,
+            customerAddress,
             items: calculatedItems,
             grandTotal,
             companyDetails,
@@ -75,10 +83,20 @@ router.post('/bills', auth, async (req, res) => {
 // Get all bills
 router.get('/bills', auth, async (req, res) => {
     try {
-        const bills = await InteriorBill.find().sort({ date: -1 });
-        res.json(bills);
+        const bills = await InteriorBill.find()
+            .sort({ date: -1 }); // Sort by date in descending order (newest first)
+        
+        res.json({
+            success: true,
+            data: bills
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Error fetching bills:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching bills',
+            error: error.message
+        });
     }
 });
 
@@ -92,6 +110,75 @@ router.get('/bills/:id', auth, async (req, res) => {
         res.json(bill);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+});
+
+// Update bill
+router.put('/bills/:id', auth, async (req, res) => {
+    try {
+        const {
+            title,
+            customerName,
+            customerEmail,
+            customerPhone,
+            customerAddress,
+            items,
+            companyDetails,
+            paymentTerms,
+            termsAndConditions
+        } = req.body;
+
+        // Convert terms and conditions to strings if they're objects
+        const processedTerms = termsAndConditions.map(term => 
+            typeof term === 'object' && term.text ? term.text : String(term)
+        );
+
+        // Calculate totals
+        const calculatedItems = items.map(item => {
+            if (item.unit === 'Sft') {
+                item.squareFeet = item.width * item.height;
+                item.total = item.squareFeet * item.pricePerUnit;
+            } else {
+                item.total = item.pricePerUnit; // For Lump sum items
+            }
+            return item;
+        });
+
+        const grandTotal = calculatedItems.reduce((sum, item) => sum + item.total, 0);
+
+        const updatedBill = await InteriorBill.findByIdAndUpdate(
+            req.params.id,
+            {
+                title,
+                customerName,
+                customerEmail,
+                customerPhone,
+                customerAddress,
+                items: calculatedItems,
+                grandTotal,
+                companyDetails,
+                paymentTerms,
+                termsAndConditions: processedTerms,
+                $currentDate: { lastModified: true }
+            },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedBill) {
+            return res.status(404).json({ message: 'Bill not found' });
+        }
+
+        res.json({
+            success: true,
+            data: updatedBill
+        });
+    } catch (error) {
+        console.error('Error updating bill:', error);
+        res.status(400).json({
+            success: false,
+            message: 'Error updating bill',
+            error: error.message
+        });
     }
 });
 
@@ -153,12 +240,10 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         y: 0,
                         w: 515,
                         h: 100,
-                    
                         color: '#FFFFFF',  // Set the border color to white
                         lineWidth: 1 
                     }]
                 },
-             
                 {
                     columns: [
                         {
@@ -191,7 +276,15 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                 { text: `Date: ${bill.date.toLocaleDateString('en-IN')}`, style: 'billDetailsCell', alignment: 'right' }
                             ],
                             [
-                                { text: `Customer: ${bill.customerName}`, style: 'billDetailsCell', colSpan: 2 },
+                                { 
+                                    stack: [
+                                        { text: `${bill.title}. ${bill.customerName}`, style: 'customerName', margin: [0, 0, 0, 8] },
+                                        { text: `Phone: ${bill.customerPhone}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                                        { text: `Email: ${bill.customerEmail}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                                        { text: `Address: ${bill.customerAddress}`, style: 'customerInfo' }
+                                    ],
+                                    colSpan: 2
+                                },
                                 {}
                             ]
                         ]
@@ -201,11 +294,12 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         vLineWidth: function(i, node) { return 0.5; },
                         hLineColor: function(i, node) { return '#7F5539'; },
                         vLineColor: function(i, node) { return '#7F5539'; },
-                        paddingLeft: function(i, node) { return 10; },
-                        paddingRight: function(i, node) { return 10; },
-                        paddingTop: function(i, node) { return 8; },
-                        paddingBottom: function(i, node) { return 8; }
-                    }
+                        paddingLeft: function(i, node) { return 15; },
+                        paddingRight: function(i, node) { return 15; },
+                        paddingTop: function(i, node) { return 12; },
+                        paddingBottom: function(i, node) { return 12; }
+                    },
+                    margin: [0, 0, 0, 20]
                 },
                 // Items Table
                 {
@@ -227,13 +321,22 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 },
                 // Grand Total
                 {
-                    style: 'grandTotal',
+                    margin: [0, 10, 0, 10],
                     table: {
                         widths: ['*', 'auto'],
                         body: [
                             [
-                                { text: 'GRAND TOTAL:', style: 'grandTotalLabel', alignment: 'right' },
-                                { text: formatCurrency(bill.grandTotal), style: 'grandTotalAmount', alignment: 'right' }
+                                {
+                                    text: 'GRAND TOTAL:',
+                                    style: 'grandTotalLabel',
+                                    alignment: 'right',
+                                    margin: [0, 0, 15, 0]
+                                },
+                                {
+                                    text: formatCurrency(bill.grandTotal).replace(/^₹/, ''),  // Remove the ₹ symbol
+                                    style: 'grandTotalAmount',
+                                    alignment: 'right'
+                                }
                             ]
                         ]
                     },
@@ -302,16 +405,16 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     margin: [5, 5, 5, 5]
                 },
                 grandTotalLabel: {
-                    fontSize: 14,
+                    fontSize: 12,
                     bold: true,
-                    color: '#7F5539',
-                    margin: [0, 10, 20, 0]
+                    color: '#7F5539'
                 },
                 grandTotalAmount: {
-                    fontSize: 14,
+                    fontSize: 12,
                     bold: true,
                     color: '#7F5539',
-                    margin: [0, 10, 0, 0]
+                    font: 'Helvetica',
+                    characterSpacing: 1
                 },
                 termsHeader: {
                     fontSize: 14,
@@ -342,6 +445,16 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     fontSize: 10,
                     color: '#7F5539',
                     margin: [0, 10, 0, 0]
+                },
+                customerName: {
+                    fontSize: 12,
+                    bold: true,
+                    color: '#7F5539'
+                },
+                customerInfo: {
+                    fontSize: 11,
+                    color: '#7F5539',
+                    lineHeight: 1.3
                 }
             }
         };

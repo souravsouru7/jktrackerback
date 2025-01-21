@@ -11,7 +11,24 @@ const interiorBillSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    title: {
+        type: String,
+        enum: ['Mr', 'Ms'],
+        required: true
+    },
     customerName: {
+        type: String,
+        required: true
+    },
+    customerEmail: {
+        type: String,
+        required: true
+    },
+    customerPhone: {
+        type: String,
+        required: true
+    },
+    customerAddress: {
         type: String,
         required: true
     },
