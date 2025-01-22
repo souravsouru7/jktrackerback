@@ -16,22 +16,10 @@ const interiorBillSchema = new mongoose.Schema({
         enum: ['Mr', 'Ms'],
         required: true
     },
-    customerName: {
-        type: String,
-        required: true
-    },
-    customerEmail: {
-        type: String,
-        required: true
-    },
-    customerPhone: {
-        type: String,
-        required: true
-    },
-    customerAddress: {
-        type: String,
-        required: true
-    },
+    clientName: { type: String, required: true },
+    clientEmail: { type: String, required: true },
+    clientPhone: { type: String, required: true },
+    clientAddress: { type: String, required: true },
     items: [interiorItemSchema],
     grandTotal: {
         type: Number,
