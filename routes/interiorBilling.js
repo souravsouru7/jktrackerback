@@ -26,10 +26,10 @@ router.post('/bills', auth, async (req, res) => {
     try {
         const {
             title,
-            customerName,
-            customerEmail,
-            customerPhone,
-            customerAddress,
+            clientName,
+            clientEmail,
+            clientPhone,
+            clientAddress,
             items,
             companyDetails,
             paymentTerms,
@@ -278,10 +278,10 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                             [
                                 { 
                                     stack: [
-                                        { text: `${bill.title}. ${bill.customerName}`, style: 'customerName', margin: [0, 0, 0, 8] },
-                                        { text: `Phone: ${bill.customerPhone}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
-                                        { text: `Email: ${bill.customerEmail}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
-                                        { text: `Address: ${bill.customerAddress}`, style: 'customerInfo' }
+                                        { text: `${bill.title}. ${bill.clientName}`, style: 'customerName', margin: [0, 0, 0, 8] },
+                                        { text: `Phone: ${bill.clientPhone}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                                        { text: `Email: ${bill.clientEmail}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                                        { text: `Address: ${bill.clientAddress}`, style: 'customerInfo' }
                                     ],
                                     colSpan: 2
                                 },
