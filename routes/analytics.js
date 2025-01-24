@@ -25,10 +25,29 @@ router.get('/monthly-expenses', async (req, res) => {
             month: { $month: '$date' }, 
             year: { $year: '$date' } 
           }, 
-          total: { $sum: '$amount' } 
+          amount: { $sum: '$amount' } 
         } 
       },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+      {
+        $project: {
+          _id: 0,
+          month: {
+            $concat: [
+              { $toString: '$_id.year' },
+              '-',
+              {
+                $cond: {
+                  if: { $lt: ['$_id.month', 10] },
+                  then: { $concat: ['0', { $toString: '$_id.month' }] },
+                  else: { $toString: '$_id.month' }
+                }
+              }
+            ]
+          },
+          amount: 1
+        }
+      }
     ]);
 
     res.status(200).json(expenses);
@@ -55,8 +74,15 @@ router.get('/income-vs-expense', async (req, res) => {
       { 
         $group: { 
           _id: '$type', 
-          total: { $sum: '$amount' } 
+          value: { $sum: '$amount' } 
         } 
+      },
+      {
+        $project: {
+          _id: 0,
+          name: '$_id',
+          value: 1
+        }
       }
     ]);
 
@@ -131,6 +157,46 @@ router.get('/monthly-trend', async (req, res) => {
     ]);
 
     res.status(200).json(monthlyTrend);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Category-wise Expense Analysis
+router.get('/category-analysis', async (req, res) => {
+  try {
+    const { userId, projectId } = req.query;
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'userId and projectId are required' });
+    }
+
+    const categoryAnalysis = await Entry.aggregate([
+      { 
+        $match: { 
+          userId: new mongoose.Types.ObjectId(userId),
+          projectId: new mongoose.Types.ObjectId(projectId),
+          type: 'Expense'  // Only get expenses
+        } 
+      },
+      { 
+        $group: { 
+          _id: '$category',
+          value: { $sum: '$amount' } 
+        } 
+      },
+      {
+        $project: {
+          _id: 0,
+          name: '$_id',
+          value: 1
+        }
+      },
+      {
+        $sort: { value: -1 }  // Sort by highest expense first
+      }
+    ]);
+
+    res.status(200).json(categoryAnalysis);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
