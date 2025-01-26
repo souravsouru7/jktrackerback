@@ -118,10 +118,10 @@ router.put('/bills/:id', auth, async (req, res) => {
     try {
         const {
             title,
-            customerName,
-            customerEmail,
-            customerPhone,
-            customerAddress,
+            clientName,
+            clientEmail,
+            clientPhone,
+            clientAddress,
             items,
             companyDetails,
             paymentTerms,
