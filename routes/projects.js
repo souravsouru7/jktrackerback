@@ -70,7 +70,6 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 // Add this to your entry routes file
-
 // Get total calculations for all user's projects combined
 router.get('/user/total-calculations', auth, async (req, res) => {
   try {
@@ -277,7 +276,34 @@ router.get('/project-summary', async (req, res) => {
   }
 });
 
-module.exports = router;
+// Update project budget
+router.put('/:id/budget', auth, async (req, res) => {
+  try {
+    const { budget } = req.body;
+    const projectId = req.params.id;
 
+    // Validate budget
+    if (!budget || isNaN(budget) || budget < 0) {
+      return res.status(400).json({ message: 'Budget must be a valid positive number' });
+    }
+
+    // Check if project exists and belongs to user
+    const project = await Project.findOne({ _id: projectId, userId: req.user._id });
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found or unauthorized' });
+    }
+
+    // Update budget
+    project.budget = budget;
+    await project.save();
+
+    res.status(200).json({ message: 'Budget updated successfully', project });
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ message: 'Invalid project ID' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 
 module.exports = router;

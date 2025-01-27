@@ -33,7 +33,8 @@ router.post('/bills', auth, async (req, res) => {
             items,
             companyDetails,
             paymentTerms,
-            termsAndConditions
+            termsAndConditions,
+            documentType
         } = req.body;
 
         // Convert terms and conditions to strings if they're objects
@@ -69,7 +70,8 @@ router.post('/bills', auth, async (req, res) => {
             companyDetails,
             paymentTerms,
             termsAndConditions: processedTerms,
-            date: new Date()
+            date: new Date(),
+            documentType: documentType || 'Invoice' // Default to Invoice if not specified
         });
 
         await bill.save();
@@ -264,7 +266,21 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     absolutePosition: { x: 40, y: 40 }
                 },
                 // Bill Header
-                { text: 'ESTIMATE', style: 'header', alignment: 'center', margin: [0, 30, 0, 20] },
+                { 
+                    columns: [
+                        {
+                            stack: [
+                                { 
+                                    text: bill.documentType.toUpperCase(),
+                                    style: 'mainHeader',
+                                    alignment: 'center',
+                                    margin: [0, 30, 0, 20]
+                                },
+                            ],
+                            width: '*'
+                        }
+                    ]
+                },
                 // Bill Details in a box
                 {
                     style: 'billDetails',
@@ -455,6 +471,11 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     fontSize: 11,
                     color: '#7F5539',
                     lineHeight: 1.3
+                },
+                mainHeader: {
+                    fontSize: 20,
+                    bold: true,
+                    color: '#7F5539'
                 }
             }
         };

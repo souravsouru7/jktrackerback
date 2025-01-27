@@ -7,6 +7,12 @@ const interiorBillSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    documentType: {
+        type: String,
+        enum: ['Invoice', 'Estimate', 'Quotation'],
+        required: true,
+        default: 'Invoice'
+    },
     date: {
         type: Date,
         default: Date.now
