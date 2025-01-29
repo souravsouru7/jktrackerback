@@ -9,6 +9,7 @@ const balanceSheetRoutes = require('./routes/balanceSheet');
 const analyticsRoutes = require('./routes/analytics');
 const projectRoutes = require('./routes/projects');
 const interiorBillingRoutes = require('./routes/interiorBilling');
+const paymentBillsRoutes = require('./routes/paymentBills');
 // Add this line
 let cors=require("cors");
 dotenv.config();
@@ -26,6 +27,7 @@ app.use('/balance-sheet', balanceSheetRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/interior', interiorBillingRoutes);
+app.use('/api/payment-bills', paymentBillsRoutes);
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
