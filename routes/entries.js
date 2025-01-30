@@ -20,7 +20,17 @@ const fonts = {
 const printer = new PdfPrinter(fonts);
 
 // Helper function to format currency
-const formatCurrency = (amount) => `₹ ${amount.toLocaleString('en-IN')}`;
+const formatCurrency = (amount) => {
+  // Format the number first
+  const formattedNumber = Number(amount).toLocaleString('en-IN', {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    useGrouping: true
+  });
+  
+  // Replace the problematic ₹ symbol with Rs.
+  return `Rs. ${formattedNumber}`;
+};
 
 // Helper function to calculate total income for a project
 const calculateTotalIncome = async (projectId) => {
@@ -109,10 +119,7 @@ const generatePdfDefinition = async (project, entry, totalIncome) => {
             [
               {
                 stack: [
-                  { text: `Project: ${project.name}`, style: 'customerName', margin: [0, 0, 0, 8] },
-                  { text: `Phone: ${project.phone || 'N/A'}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
-                  { text: `Email: ${project.email || 'N/A'}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
-                  { text: `Address: ${project.address || 'N/A'}`, style: 'customerInfo' }
+                  { text: `Project: ${project.name}`, style: 'customerName', margin: [0, 0, 0, 8] }
                 ],
                 colSpan: 2
               },
