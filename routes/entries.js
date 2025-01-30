@@ -36,6 +36,13 @@ const calculateTotalIncome = async (projectId) => {
 const generatePdfDefinition = async (project, entry, totalIncome) => {
   const remainingPayment = project.budget - totalIncome;
   
+  // Company details (match with interior bill)
+  const companyDetails = {
+    name: 'JK Interiors',
+    address: '# 1924, 1st Floor, 11th Main Road, HAL 2nd Stage, Indiranagar, Bangalore - 560008',
+    phones: ['080-41154115', '+91 9845157333']
+  };
+  
   return {
     pageSize: 'A4',
     pageMargins: [40, 40, 40, 60],
@@ -73,9 +80,9 @@ const generatePdfDefinition = async (project, entry, totalIncome) => {
           {
             width: '*',
             stack: [
-              { text: 'JK Interiors', style: 'companyName', alignment: 'right' },
-              { text: 'Your Address Here', style: 'companyDetails', alignment: 'right' },
-              { text: 'Phone: Your Phone Number', style: 'companyDetails', alignment: 'right' }
+              { text: companyDetails.name, style: 'companyName', alignment: 'right' },
+              { text: companyDetails.address, style: 'companyDetails', alignment: 'right' },
+              { text: companyDetails.phones.join(' | '), style: 'companyDetails', alignment: 'right' }
             ],
             margin: [0, 10, 0, 10]
           }
@@ -102,7 +109,10 @@ const generatePdfDefinition = async (project, entry, totalIncome) => {
             [
               {
                 stack: [
-                  { text: `Project: ${project.name}`, style: 'customerName', margin: [0, 0, 0, 8] }
+                  { text: `Project: ${project.name}`, style: 'customerName', margin: [0, 0, 0, 8] },
+                  { text: `Phone: ${project.phone || 'N/A'}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                  { text: `Email: ${project.email || 'N/A'}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                  { text: `Address: ${project.address || 'N/A'}`, style: 'customerInfo' }
                 ],
                 colSpan: 2
               },
@@ -189,7 +199,7 @@ const generatePdfDefinition = async (project, entry, totalIncome) => {
       {
         stack: [
           { text: 'Thanking you,', style: 'footer', alignment: 'center' },
-          { text: 'JK Interiors', style: 'footerCompany', alignment: 'center' }
+          { text: companyDetails.name, style: 'footerCompany', alignment: 'center' }
         ],
         margin: [0, 20, 0, 0]
       }
