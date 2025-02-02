@@ -48,7 +48,7 @@ router.post('/bills', auth, async (req, res) => {
                 item.squareFeet = item.width * item.height;
                 item.total = item.squareFeet * item.pricePerUnit;
             } else {
-                item.total = item.pricePerUnit; // For Lump sum items
+                item.total = item.pricePerUnit; // For Lump sum and Ls items
             }
             return item;
         });
@@ -127,7 +127,8 @@ router.put('/bills/:id', auth, async (req, res) => {
             items,
             companyDetails,
             paymentTerms,
-            termsAndConditions
+            termsAndConditions,
+            documentType
         } = req.body;
 
         // Convert terms and conditions to strings if they're objects
@@ -135,15 +136,25 @@ router.put('/bills/:id', auth, async (req, res) => {
             typeof term === 'object' && term.text ? term.text : String(term)
         );
 
-        // Calculate totals
+        // Calculate totals with validation for required fields
         const calculatedItems = items.map(item => {
+            const processedItem = { ...item };
+            
             if (item.unit === 'Sft') {
-                item.squareFeet = item.width * item.height;
-                item.total = item.squareFeet * item.pricePerUnit;
+                if (!item.width || !item.height) {
+                    throw new Error('Width and height are required for Sft units');
+                }
+                processedItem.squareFeet = item.width * item.height;
+                processedItem.total = processedItem.squareFeet * item.pricePerUnit;
             } else {
-                item.total = item.pricePerUnit; // For Lump sum items
+                // For Lump sum and Ls items
+                processedItem.total = item.pricePerUnit;
+                // Set these to undefined or null for non-Sft items
+                processedItem.width = undefined;
+                processedItem.height = undefined;
+                processedItem.squareFeet = undefined;
             }
-            return item;
+            return processedItem;
         });
 
         const grandTotal = calculatedItems.reduce((sum, item) => sum + item.total, 0);
@@ -161,9 +172,14 @@ router.put('/bills/:id', auth, async (req, res) => {
                 companyDetails,
                 paymentTerms,
                 termsAndConditions: processedTerms,
+                documentType: documentType || 'Invoice', // Default to Invoice if not specified
                 $currentDate: { lastModified: true }
             },
-            { new: true, runValidators: true }
+            { 
+                new: true, 
+                runValidators: true,
+                context: 'query' // This ensures that the validation context is maintained
+            }
         );
 
         if (!updatedBill) {

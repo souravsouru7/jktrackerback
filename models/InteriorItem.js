@@ -11,7 +11,7 @@ const interiorItemSchema = new mongoose.Schema({
     },
     unit: {
         type: String,
-        enum: ['Sft', 'Lump'],
+        enum: ['Sft', 'Lump', 'Ls'],
         required: true
     },
     width: {
