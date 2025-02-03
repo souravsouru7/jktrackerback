@@ -19,7 +19,7 @@ const interiorBillSchema = new mongoose.Schema({
     },
     title: {
         type: String,
-        enum: ['Mr', 'Ms','No'],
+        enum: ['Mr', 'Ms','None'],
         required: true
     },
     clientName: { type: String, required: true },

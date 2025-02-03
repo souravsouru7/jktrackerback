@@ -2,13 +2,16 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/Users');
 
 const auth = async (req, res, next) => {
-  const authHeader = req.header('Authorization');
-  if (!authHeader) {
-    return res.status(401).json({ message: 'Authorization header is missing' });
+  // Get token from header
+  const token = req.header('x-auth-token');
+
+  // Check if no token
+  if (!token) {
+    return res.status(401).json({ message: 'No token, authorization denied' });
   }
 
-  const token = authHeader.replace('Bearer ', '');
   try {
+    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
     if (!user) {
@@ -16,8 +19,8 @@ const auth = async (req, res, next) => {
     }
     req.user = user;
     next();
-  } catch (error) {
-    res.status(401).json({ message: 'Please authenticate.' });
+  } catch (err) {
+    res.status(401).json({ message: 'Token is not valid' });
   }
 };
 

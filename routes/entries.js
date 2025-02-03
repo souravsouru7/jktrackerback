@@ -367,6 +367,26 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Update an entry (add this before the PATCH route)
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, amount, category, description, date } = req.body;
+
+    const entry = await Entry.findByIdAndUpdate(
+      id,
+      { type, amount, category, description, date },
+      { new: true }
+    );
+
+    if (!entry) return res.status(404).json({ message: 'Entry not found' });
+
+    res.status(200).json({ message: 'Entry updated successfully', entry });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Update an entry
 router.patch('/:id', async (req, res) => {
   try {
