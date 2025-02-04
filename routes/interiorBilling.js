@@ -60,7 +60,7 @@ router.post('/bills', auth, async (req, res) => {
 
         const bill = new InteriorBill({
             billNumber,
-            title,
+            title: title === 'None' ? '' : title,
             clientName,
             clientEmail,
             clientPhone,
@@ -71,7 +71,7 @@ router.post('/bills', auth, async (req, res) => {
             paymentTerms,
             termsAndConditions: processedTerms,
             date: new Date(),
-            documentType: documentType || 'Invoice' // Default to Invoice if not specified
+            documentType: documentType || 'Invoice' 
         });
 
         await bill.save();
@@ -162,7 +162,7 @@ router.put('/bills/:id', auth, async (req, res) => {
         const updatedBill = await InteriorBill.findByIdAndUpdate(
             req.params.id,
             {
-                title,
+                title: title === 'None' ? '' : title,
                 clientName,
                 clientEmail,
                 clientPhone,
@@ -310,7 +310,11 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                             [
                                 { 
                                     stack: [
-                                        { text: `${bill.title}. ${bill.clientName}`, style: 'customerName', margin: [0, 0, 0, 8] },
+                                        { 
+                                            text: `${bill.title !== 'None' ? `${bill.title}. ` : ''}${bill.clientName}`, 
+                                            style: 'customerName', 
+                                            margin: [0, 0, 0, 8] 
+                                        },
                                         { text: `Phone: ${bill.clientPhone}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
                                         { text: `Email: ${bill.clientEmail}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
                                         { text: `Address: ${bill.clientAddress}`, style: 'customerInfo' }
