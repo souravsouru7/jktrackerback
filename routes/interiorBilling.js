@@ -60,7 +60,7 @@ router.post('/bills', auth, async (req, res) => {
 
         const bill = new InteriorBill({
             billNumber,
-            title: title === 'None' ? '' : title,
+            title,
             clientName,
             clientEmail,
             clientPhone,
@@ -162,7 +162,7 @@ router.put('/bills/:id', auth, async (req, res) => {
         const updatedBill = await InteriorBill.findByIdAndUpdate(
             req.params.id,
             {
-                title: title === 'None' ? '' : title,
+                title,
                 clientName,
                 clientEmail,
                 clientPhone,
@@ -311,7 +311,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                 { 
                                     stack: [
                                         { 
-                                            text: `${bill.title !== 'None' ? `${bill.title}. ` : ''}${bill.clientName}`, 
+                                            text: `${bill.title === 'None' ? '' : `${bill.title}. `}${bill.clientName}`, 
                                             style: 'customerName', 
                                             margin: [0, 0, 0, 8] 
                                         },
