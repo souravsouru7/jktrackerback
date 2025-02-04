@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose'); // Add this line
 const Entry = require('../models/Entry');
+const Project = require('../models/Project');
 
 
 // Get overall balance sheet summary
@@ -301,6 +302,118 @@ router.delete('/:projectId', async (req, res) => {
     res.status(500).json({ 
       message: 'Server error while deleting project', 
       error: error.message 
+    });
+  }
+});
+
+// Get detailed project balance sheet
+router.get('/project-details/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { userId } = req.query;
+    
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'userId and projectId are required' });
+    }
+
+    // First get project details
+    const project = await Project.findOne({ 
+      _id: projectId, 
+      userId: userId 
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Get all entries for the project
+    const entries = await Entry.aggregate([
+      {
+        $match: {
+          projectId: new mongoose.Types.ObjectId(projectId),
+          userId: new mongoose.Types.ObjectId(userId)
+        }
+      },
+      // Group by type and category
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            category: '$category'
+          },
+          entries: {
+            $push: {
+              amount: '$amount',
+              description: '$description',
+              date: '$date',
+              _id: '$_id'
+            }
+          },
+          totalAmount: { $sum: '$amount' }
+        }
+      },
+      // Group by type (Income/Expense)
+      {
+        $group: {
+          _id: '$_id.type',
+          categories: {
+            $push: {
+              category: '$_id.category',
+              entries: '$entries',
+              totalAmount: '$totalAmount'
+            }
+          },
+          totalAmount: { $sum: '$totalAmount' }
+        }
+      }
+    ]);
+
+    // Process the results
+    const income = entries.find(e => e._id === 'Income') || { 
+      categories: [], 
+      totalAmount: 0 
+    };
+    const expenses = entries.find(e => e._id === 'Expense') || { 
+      categories: [], 
+      totalAmount: 0 
+    };
+
+    // Calculate net balance
+    const netBalance = income.totalAmount - expenses.totalAmount;
+
+    const response = {
+      projectDetails: {
+        name: project.name,
+        description: project.description,
+        budget: project.budget
+      },
+      summary: {
+        totalIncome: income.totalAmount,
+        totalExpenses: expenses.totalAmount,
+        netBalance: netBalance,
+        budgetRemaining: project.budget - income.totalAmount
+      },
+      income: {
+        total: income.totalAmount,
+        categories: income.categories.sort((a, b) => b.totalAmount - a.totalAmount)
+      },
+      expenses: {
+        total: expenses.totalAmount,
+        categories: expenses.categories.sort((a, b) => b.totalAmount - a.totalAmount)
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      data: response
+    });
+
+  } catch (error) {
+    console.error('Project balance sheet error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching project balance sheet',
+      error: error.message
     });
   }
 });
