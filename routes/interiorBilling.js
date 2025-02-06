@@ -86,7 +86,8 @@ router.post('/bills', auth, async (req, res) => {
 router.get('/bills', auth, async (req, res) => {
     try {
         const bills = await InteriorBill.find()
-            .sort({ date: -1 }); // Sort by date in descending order (newest first)
+            .sort({ date: -1 }) // Sort by date in descending order (newest first)
+            .populate('originalBillId', 'billNumber'); // Optionally populate original bill reference
         
         res.json({
             success: true,
@@ -517,4 +518,53 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
         }
     }
 });
+
+// Duplicate bill
+router.post('/bills/:id/duplicate', auth, async (req, res) => {
+    try {
+        // Find the original bill
+        const originalBill = await InteriorBill.findById(req.params.id);
+        if (!originalBill) {
+            return res.status(404).json({ message: 'Original bill not found' });
+        }
+
+        // Create a new bill object with the original data
+        const duplicatedBillData = originalBill.toObject();
+
+        // Remove _id and billNumber from the duplicated data
+        delete duplicatedBillData._id;
+        delete duplicatedBillData.billNumber;
+        
+        // Generate new bill number with current timestamp
+        duplicatedBillData.billNumber = 'INT-' + Date.now();
+        
+        // Set the bill type as DUPLICATE and store reference to original
+        duplicatedBillData.billType = 'DUPLICATE';
+        duplicatedBillData.originalBillId = originalBill._id;
+        
+        // Update the date to current
+        duplicatedBillData.date = new Date();
+
+        // Create new bill document
+        const duplicatedBill = new InteriorBill(duplicatedBillData);
+        
+        // Save the duplicated bill
+        await duplicatedBill.save();
+
+        res.status(201).json({
+            success: true,
+            data: duplicatedBill,
+            message: 'Bill duplicated successfully'
+        });
+
+    } catch (error) {
+        console.error('Error duplicating bill:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error duplicating bill',
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;

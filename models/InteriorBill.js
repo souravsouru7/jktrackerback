@@ -7,6 +7,16 @@ const interiorBillSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    billType: {
+        type: String,
+        enum: ['ORIGINAL', 'DUPLICATE'],
+        default: 'ORIGINAL'
+    },
+    originalBillId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'InteriorBill',
+        default: null
+    },
     documentType: {
         type: String,
         enum: ['Invoice', 'Estimate', 'Quotation'],
