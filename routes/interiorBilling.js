@@ -132,11 +132,6 @@ router.put('/bills/:id', auth, async (req, res) => {
             documentType
         } = req.body;
 
-        // Convert terms and conditions to strings if they're objects
-        const processedTerms = termsAndConditions.map(term => 
-            typeof term === 'object' && term.text ? term.text : String(term)
-        );
-
         // Calculate totals with validation for required fields
         const calculatedItems = items.map(item => {
             const processedItem = { ...item };
@@ -159,6 +154,9 @@ router.put('/bills/:id', auth, async (req, res) => {
         });
 
         const grandTotal = calculatedItems.reduce((sum, item) => sum + item.total, 0);
+
+        // Process terms and conditions - only include selected terms
+        const processedTerms = termsAndConditions.filter(term => term && term.trim() !== '');
 
         const updatedBill = await InteriorBill.findByIdAndUpdate(
             req.params.id,
@@ -209,8 +207,8 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
             return res.status(404).json({ message: 'Bill not found' });
         }
 
-        // Ensure terms and conditions are strings
-        const processedTerms = bill.termsAndConditions.map(term => String(term));
+        // Only include non-empty terms and conditions
+        const processedTerms = bill.termsAndConditions.filter(term => term && term.trim() !== '').map(term => String(term));
 
         // Create table data for items with enhanced styling
         const tableBody = [
