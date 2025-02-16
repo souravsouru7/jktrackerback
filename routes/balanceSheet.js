@@ -1,9 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose'); // Add this line
+const mongoose = require('mongoose');
 const Entry = require('../models/Entry');
 const Project = require('../models/Project');
+const PdfPrinter = require('pdfmake');
+const fs = require('fs');
+const path = require('path');
 
+// Define a simple font configuration
+const fonts = {
+  Courier: {
+    normal: 'Courier',
+    bold: 'Courier-Bold'
+  }
+};
 
 // Get overall balance sheet summary
 router.get('/summary', async (req, res) => {
@@ -56,7 +66,7 @@ router.get('/summary', async (req, res) => {
       totalIncome: incomeTotal,
       totalExpenses: expenseTotal,
       netBalance: netBalance,
-      currency: 'USD', // Add currency if needed
+      currency: 'USD', 
       lastUpdated: new Date()
     };
 
@@ -208,13 +218,11 @@ router.get('/yearly', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-// Add this new route to existing balanceSheet.js
 
-// Get overall summary across all projects
 // Get overall summary across all projects
 router.get('/user/total-calculations', async (req, res) => {
   try {
-    const { userId } = req.query; // Get userId from query instead of auth middleware
+    const { userId } = req.query; 
 
     if (!userId) {
       return res.status(400).json({ message: 'userId is required' });
@@ -413,6 +421,507 @@ router.get('/project-details/:projectId', async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: 'Error fetching project balance sheet',
+      error: error.message
+    });
+  }
+});
+
+// Generate PDF balance sheet
+router.post('/generate-pdf', async (req, res) => {
+  try {
+    const { userId, projectId, selectedCategories } = req.body;
+    
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'userId and projectId are required' });
+    }
+
+    // Fetch project details
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Fetch entries for selected categories
+    const entries = await Entry.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          projectId: new mongoose.Types.ObjectId(projectId),
+          category: { $in: selectedCategories }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            category: '$category'
+          },
+          totalAmount: { $sum: '$amount' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          categories: {
+            $push: {
+              category: '$_id.category',
+              totalAmount: '$totalAmount'
+            }
+          },
+          total: { $sum: '$totalAmount' }
+        }
+      }
+    ]);
+
+    // Process entries data
+    const incomeData = entries.find(e => e._id === 'Income') || { categories: [], total: 0 };
+    const expenseData = entries.find(e => e._id === 'Expense') || { categories: [], total: 0 };
+    const netBalance = incomeData.total - expenseData.total;
+
+    // Create PDF document definition
+    const docDefinition = {
+      pageSize: 'A4',
+      pageMargins: [40, 60, 40, 60],
+      defaultStyle: {
+        font: 'Courier',
+        fontSize: 10
+      },
+      footer: function(currentPage, pageCount) {
+        return {
+          text: `Page ${currentPage} of ${pageCount}`,
+          alignment: 'center',
+          fontSize: 8,
+          margin: [0, 10, 0, 0]
+        };
+      },
+      header: function() {
+        return {
+          columns: [
+            {
+              text: 'BALANCE SHEET REPORT',
+              alignment: 'left',
+              margin: [40, 20, 0, 0],
+              fontSize: 8,
+              color: '#666666'
+            },
+            {
+              text: new Date().toLocaleDateString(),
+              alignment: 'right',
+              margin: [0, 20, 40, 0],
+              fontSize: 8,
+              color: '#666666'
+            }
+          ]
+        };
+      },
+      content: [
+        {
+          columns: [
+            {
+              width: '*',
+              stack: [
+                { text: 'BALANCE SHEET', style: 'mainHeader' },
+                { text: project.name.toUpperCase(), style: 'projectName' },
+                { text: new Date().toLocaleDateString(), style: 'date' }
+              ]
+            }
+          ]
+        },
+        { canvas: [{ type: 'line', x1: 0, y1: 5, x2: 515, y2: 5, lineWidth: 1, lineColor: '#000000' }] },
+        { text: '\n' },
+
+        // Financial Overview Section
+        {
+          table: {
+            widths: ['*'],
+            body: [
+              [{ text: 'FINANCIAL OVERVIEW', style: 'sectionHeader' }]
+            ]
+          },
+          layout: 'lightHorizontalLines'
+        },
+        { text: '\n' },
+
+        // Income Section
+        {
+          table: {
+            headerRows: 1,
+            widths: ['*', 'auto', 'auto'],
+            body: [
+              [
+                { text: 'INCOME CATEGORIES', style: 'tableHeader', colSpan: 3, alignment: 'left' },
+                {}, {}
+              ],
+              [
+                { text: 'Category', style: 'tableSubHeader' },
+                { text: 'Amount (₹)', style: 'tableSubHeader', alignment: 'right' },
+                { text: '% of Total', style: 'tableSubHeader', alignment: 'right' }
+              ],
+              ...incomeData.categories.map(item => [
+                { text: item.category, style: 'tableCell' },
+                { text: item.totalAmount.toFixed(2), style: 'tableCell', alignment: 'right' },
+                { 
+                  text: ((item.totalAmount / incomeData.total) * 100).toFixed(1) + '%',
+                  style: 'tableCell',
+                  alignment: 'right'
+                }
+              ]),
+              [
+                { text: 'Total Income', style: 'tableTotal' },
+                { text: incomeData.total.toFixed(2), style: 'tableTotal', alignment: 'right' },
+                { text: '100%', style: 'tableTotal', alignment: 'right' }
+              ]
+            ]
+          },
+          layout: {
+            hLineWidth: function(i, node) {
+              return (i === 0 || i === 1 || i === node.table.body.length - 1) ? 1 : 0.5;
+            },
+            vLineWidth: function(i, node) {
+              return 0;
+            },
+            hLineColor: function(i, node) {
+              return (i === 0 || i === 1) ? '#000000' : '#CCCCCC';
+            },
+            paddingLeft: function(i) { return 8; },
+            paddingRight: function(i) { return 8; },
+            paddingTop: function(i) { return 8; },
+            paddingBottom: function(i) { return 8; }
+          }
+        },
+        { text: '\n' },
+
+        // Expenses Section (similar structure as Income)
+        // ... Similar table structure for expenses ...
+
+        // Summary Section
+        {
+          table: {
+            widths: ['*', 'auto'],
+            body: [
+              [
+                { text: 'FINANCIAL SUMMARY', style: 'summaryHeader', colSpan: 2 },
+                {}
+              ],
+              [
+                { text: 'Total Income', style: 'summaryRow' },
+                { text: `₹${incomeData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
+              ],
+              [
+                { text: 'Total Expenses', style: 'summaryRow' },
+                { text: `₹${expenseData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
+              ],
+              [
+                { text: 'NET BALANCE', style: 'summaryTotal' },
+                { 
+                  text: `₹${netBalance.toFixed(2)}`,
+                  style: 'summaryTotal',
+                  alignment: 'right',
+                  color: netBalance >= 0 ? '#006400' : '#FF0000'
+                }
+              ]
+            ]
+          },
+          layout: {
+            hLineWidth: function(i, node) { return 1; },
+            vLineWidth: function(i, node) { return 0; },
+            hLineColor: function(i, node) { return '#000000'; },
+            fillColor: function(i, node) {
+              return (i === 0) ? '#F8F9FA' : null;
+            }
+          }
+        }
+      ],
+      styles: {
+        mainHeader: {
+          fontSize: 24,
+          bold: true,
+          color: '#2C3E50',
+          margin: [0, 0, 0, 5]
+        },
+        projectName: {
+          fontSize: 16,
+          color: '#34495E',
+          margin: [0, 0, 0, 20]
+        },
+        sectionHeader: {
+          fontSize: 14,
+          bold: true,
+          color: '#2C3E50',
+          margin: [0, 10, 0, 10]
+        },
+        tableHeader: {
+          fontSize: 12,
+          bold: true,
+          color: '#FFFFFF',
+          fillColor: '#34495E',
+          margin: [0, 5, 0, 5]
+        },
+        tableSubHeader: {
+          fontSize: 11,
+          bold: true,
+          color: '#2C3E50',
+          fillColor: '#F8F9FA',
+          margin: [0, 5, 0, 5]
+        },
+        tableCell: {
+          fontSize: 10,
+          color: '#2C3E50',
+          margin: [0, 3, 0, 3]
+        },
+        tableTotal: {
+          fontSize: 11,
+          bold: true,
+          color: '#2C3E50',
+          margin: [0, 5, 0, 5]
+        },
+        summaryHeader: {
+          fontSize: 14,
+          bold: true,
+          color: '#2C3E50',
+          margin: [0, 5, 0, 5]
+        },
+        summaryRow: {
+          fontSize: 11,
+          color: '#2C3E50',
+          margin: [0, 3, 0, 3]
+        },
+        summaryTotal: {
+          fontSize: 12,
+          bold: true,
+          color: '#2C3E50',
+          margin: [0, 5, 0, 5]
+        }
+      }
+    };
+
+    // Create PDF
+    const printer = new PdfPrinter(fonts);
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+    // Set response headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=balance-sheet-${project.name}.pdf`);
+
+    // Pipe the PDF document to the response
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    res.status(500).json({
+      message: 'Server error while generating PDF',
+      error: error.message
+    });
+  }
+});
+
+// Download PDF balance sheet
+router.post('/download-pdf', async (req, res) => {
+  try {
+    const { userId, projectId, selectedCategories } = req.body;
+    
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'userId and projectId are required' });
+    }
+
+    // Fetch project details
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Fetch entries for selected categories
+    const entries = await Entry.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          projectId: new mongoose.Types.ObjectId(projectId),
+          category: { $in: selectedCategories }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            category: '$category'
+          },
+          totalAmount: { $sum: '$amount' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          categories: {
+            $push: {
+              category: '$_id.category',
+              totalAmount: '$totalAmount'
+            }
+          },
+          total: { $sum: '$totalAmount' }
+        }
+      }
+    ]);
+
+    // Process entries data
+    const incomeData = entries.find(e => e._id === 'Income') || { categories: [], total: 0 };
+    const expenseData = entries.find(e => e._id === 'Expense') || { categories: [], total: 0 };
+    const netBalance = incomeData.total - expenseData.total;
+
+    // Create PDF document definition
+    const docDefinition = {
+      defaultStyle: {
+        font: 'Courier',
+        fontSize: 10
+      },
+      content: [
+        { text: 'Balance Sheet Report', style: 'header' },
+        { text: `Project: ${project.name}`, style: 'subheader' },
+        { text: `Generated on: ${new Date().toLocaleDateString()}`, style: 'date' },
+        { text: '\n' },
+        
+        // Income Section
+        { text: 'Income', style: 'sectionHeader' },
+        {
+          style: 'tableStyle',
+          table: {
+            headerRows: 1,
+            widths: ['*', 'auto'],
+            body: [
+              [
+                { text: 'Category', style: 'tableHeader' }, 
+                { text: 'Amount (₹)', style: 'tableHeader' }
+              ],
+              ...incomeData.categories.map(item => [
+                { text: item.category, style: 'tableCell' },
+                { text: item.totalAmount.toFixed(2), style: 'tableCell', alignment: 'right' }
+              ]),
+              [
+                { text: 'Total Income', style: 'tableFooter' },
+                { text: incomeData.total.toFixed(2), style: 'tableFooter', alignment: 'right' }
+              ]
+            ]
+          }
+        },
+        { text: '\n' },
+
+        // Expense Section
+        { text: 'Expenses', style: 'sectionHeader' },
+        {
+          style: 'tableStyle',
+          table: {
+            headerRows: 1,
+            widths: ['*', 'auto'],
+            body: [
+              [
+                { text: 'Category', style: 'tableHeader' },
+                { text: 'Amount (₹)', style: 'tableHeader' }
+              ],
+              ...expenseData.categories.map(item => [
+                { text: item.category, style: 'tableCell' },
+                { text: item.totalAmount.toFixed(2), style: 'tableCell', alignment: 'right' }
+              ]),
+              [
+                { text: 'Total Expenses', style: 'tableFooter' },
+                { text: expenseData.total.toFixed(2), style: 'tableFooter', alignment: 'right' }
+              ]
+            ]
+          }
+        },
+        { text: '\n' },
+
+        // Summary Section
+        { text: 'Summary', style: 'sectionHeader' },
+        {
+          style: 'tableStyle',
+          table: {
+            widths: ['*', 'auto'],
+            body: [
+              [
+                { text: 'Total Income', style: 'summaryRow' },
+                { text: `₹${incomeData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
+              ],
+              [
+                { text: 'Total Expenses', style: 'summaryRow' },
+                { text: `₹${expenseData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
+              ],
+              [
+                { text: 'Net Balance', style: 'summaryTotal' },
+                { text: `₹${netBalance.toFixed(2)}`, style: 'summaryTotal', alignment: 'right' }
+              ]
+            ]
+          }
+        }
+      ],
+      styles: {
+        header: {
+          fontSize: 20,
+          bold: true,
+          alignment: 'center',
+          margin: [0, 0, 0, 10]
+        },
+        subheader: {
+          fontSize: 16,
+          bold: true,
+          margin: [0, 10, 0, 5]
+        },
+        date: {
+          fontSize: 12,
+          color: '#666666',
+          margin: [0, 0, 0, 20]
+        },
+        sectionHeader: {
+          fontSize: 14,
+          bold: true,
+          margin: [0, 15, 0, 10]
+        },
+        tableStyle: {
+          margin: [0, 5, 0, 15]
+        },
+        tableHeader: {
+          bold: true,
+          fontSize: 11,
+          color: '#000000',
+          fillColor: '#f2f2f2',
+          margin: [0, 5, 0, 5]
+        },
+        tableCell: {
+          fontSize: 10,
+          margin: [0, 3, 0, 3]
+        },
+        tableFooter: {
+          bold: true,
+          fontSize: 10,
+          margin: [0, 5, 0, 5]
+        },
+        summaryRow: {
+          fontSize: 11,
+          margin: [0, 3, 0, 3]
+        },
+        summaryTotal: {
+          fontSize: 12,
+          bold: true,
+          margin: [0, 5, 0, 5]
+        }
+      }
+    };
+
+    // Create PDF
+    const printer = new PdfPrinter(fonts);
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+    // Set response headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=balance-sheet-${project.name}.pdf`);
+
+    // Pipe the PDF document to the response
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    res.status(500).json({
+      message: 'Server error while generating PDF',
       error: error.message
     });
   }
