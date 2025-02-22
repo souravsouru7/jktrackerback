@@ -6,6 +6,11 @@ const projectSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
   budget: { type: Number, default: 0 },
+  status: {
+    type: String,
+    enum: ['inProgress', 'progress', 'finished'],
+    default: 'inProgress'
+  }
 }, { timestamps: true });
 
 // Add pre-remove middleware to handle entry deletion
@@ -18,7 +23,5 @@ projectSchema.pre('remove', async function(next) {
     next(error);
   }
 });
-
-
 
 module.exports = mongoose.model('Project', projectSchema);

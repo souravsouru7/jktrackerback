@@ -41,6 +41,15 @@ const interiorBillSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    discount: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    finalAmount: {
+        type: Number,
+        required: true
+    },
     companyDetails: {
         name: String,
         address: String,
@@ -52,7 +61,12 @@ const interiorBillSchema = new mongoose.Schema({
         amount: Number,
         note: String
     }],
-    termsAndConditions: [String]
+    termsAndConditions: [String],
+    projectId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Project',
+        default: null
+    }
 });
 
 // Add pre-save middleware to ensure termsAndConditions are strings

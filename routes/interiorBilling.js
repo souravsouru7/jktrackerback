@@ -3,6 +3,7 @@ const router = express.Router();
 const PdfPrinter = require('pdfmake');
 const auth = require('../middleware/auth');
 const InteriorBill = require('../models/InteriorBill');
+const Project = require('../models/Project'); // Add this import
 const fs = require('fs');
 const path = require('path');
 
@@ -34,7 +35,8 @@ router.post('/bills', auth, async (req, res) => {
             companyDetails,
             paymentTerms,
             termsAndConditions,
-            documentType
+            documentType,
+            discount
         } = req.body;
 
         // Convert terms and conditions to strings if they're objects
@@ -54,6 +56,8 @@ router.post('/bills', auth, async (req, res) => {
         });
 
         const grandTotal = calculatedItems.reduce((sum, item) => sum + item.total, 0);
+        const discountAmount = discount || 0;
+        const finalAmount = grandTotal - discountAmount;
 
         // Generate bill number with current timestamp
         const billNumber = 'INT-' + Date.now();
@@ -67,6 +71,8 @@ router.post('/bills', auth, async (req, res) => {
             clientAddress,
             items: calculatedItems,
             grandTotal,
+            discount: discountAmount,
+            finalAmount,
             companyDetails,
             paymentTerms,
             termsAndConditions: processedTerms,
@@ -103,6 +109,27 @@ router.get('/bills', auth, async (req, res) => {
     }
 });
 
+// Get all unconnected bills - Move this BEFORE the /:id routes
+router.get('/bills/unconnected', auth, async (req, res) => {
+    try {
+        const bills = await InteriorBill.find({ projectId: null })
+            .sort({ date: -1 })
+            .populate('originalBillId', 'billNumber');
+
+        res.json({
+            success: true,
+            data: bills
+        });
+    } catch (error) {
+        console.error('Error fetching unconnected bills:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching unconnected bills',
+            error: error.message
+        });
+    }
+});
+
 // Get single bill
 router.get('/bills/:id', auth, async (req, res) => {
     try {
@@ -129,7 +156,8 @@ router.put('/bills/:id', auth, async (req, res) => {
             companyDetails,
             paymentTerms,
             termsAndConditions,
-            documentType
+            documentType,
+            discount
         } = req.body;
 
         // Calculate totals with validation for required fields
@@ -154,6 +182,8 @@ router.put('/bills/:id', auth, async (req, res) => {
         });
 
         const grandTotal = calculatedItems.reduce((sum, item) => sum + item.total, 0);
+        const discountAmount = discount || 0;
+        const finalAmount = grandTotal - discountAmount;
 
         // Process terms and conditions - only include selected terms
         const processedTerms = termsAndConditions.filter(term => term && term.trim() !== '');
@@ -168,6 +198,8 @@ router.put('/bills/:id', auth, async (req, res) => {
                 clientAddress,
                 items: calculatedItems,
                 grandTotal,
+                discount: discountAmount,
+                finalAmount,
                 companyDetails,
                 paymentTerms,
                 termsAndConditions: processedTerms,
@@ -354,7 +386,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         }
                     }
                 },
-                // Grand Total
+                // Grand Total and Discount
                 {
                     margin: [0, 10, 0, 10],
                     table: {
@@ -368,12 +400,38 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                     margin: [0, 0, 15, 0]
                                 },
                                 {
-                                    text: formatCurrency(bill.grandTotal).replace(/^₹/, ''),  // Remove the ₹ symbol
+                                    text: formatCurrency(bill.grandTotal).split('₹')[1].trim(),
                                     style: 'grandTotalAmount',
                                     alignment: 'right'
                                 }
+                            ],
+                            bill.discount > 0 ? [
+                                {
+                                    text: 'DISCOUNT:',
+                                    style: 'discountLabel',
+                                    alignment: 'right',
+                                    margin: [0, 0, 15, 0]
+                                },
+                                {
+                                    text: `- ${formatCurrency(bill.discount).split('₹')[1].trim()}`,
+                                    style: 'discountAmount',
+                                    alignment: 'right'
+                                }
+                            ] : null,
+                            [
+                                {
+                                    text: 'FINAL AMOUNT:',
+                                    style: 'finalAmountLabel',
+                                    alignment: 'right',
+                                    margin: [0, 0, 15, 0]
+                                },
+                                {
+                                    text: formatCurrency(bill.finalAmount).split('₹')[1].trim(),
+                                    style: 'finalAmountValue',
+                                    alignment: 'right'
+                                }
                             ]
-                        ]
+                        ].filter(Boolean)
                     },
                     layout: 'noBorders'
                 },
@@ -450,6 +508,26 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     color: '#7F5539',
                     font: 'Helvetica',
                     characterSpacing: 1
+                },
+                discountLabel: {
+                    fontSize: 12,
+                    bold: true,
+                    color: '#7F5539'
+                },
+                discountAmount: {
+                    fontSize: 12,
+                    bold: true,
+                    color: '#7F5539'
+                },
+                finalAmountLabel: {
+                    fontSize: 13,
+                    bold: true,
+                    color: '#7F5539'
+                },
+                finalAmountValue: {
+                    fontSize: 13,
+                    bold: true,
+                    color: '#7F5539'
                 },
                 termsHeader: {
                     fontSize: 14,
@@ -560,6 +638,104 @@ router.post('/bills/:id/duplicate', auth, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error duplicating bill',
+            error: error.message
+        });
+    }
+});
+
+// Connect bill to project
+router.post('/bills/:billId/connect-project/:projectId', auth, async (req, res) => {
+    try {
+        const { billId, projectId } = req.params;
+
+        // Check if bill exists and populate project details
+        const bill = await InteriorBill.findById(billId);
+        if (!bill) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'Bill not found' 
+            });
+        }
+
+        // Check if project exists
+        const project = await Project.findById(projectId);
+        if (!project) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'Project not found' 
+            });
+        }
+
+        // Update bill with project reference
+        bill.projectId = projectId;
+        const updatedBill = await bill.save();
+
+        // Return the updated bill with project details
+        const populatedBill = await InteriorBill.findById(updatedBill._id)
+            .populate('projectId', 'name status'); // Populate basic project details
+
+        res.json({
+            success: true,
+            message: 'Bill connected to project successfully',
+            data: populatedBill
+        });
+
+    } catch (error) {
+        console.error('Error connecting bill to project:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error connecting bill to project',
+            error: error.message
+        });
+    }
+});
+
+// Disconnect bill from project
+router.post('/bills/:billId/disconnect-project', auth, async (req, res) => {
+    try {
+        const { billId } = req.params;
+
+        const bill = await InteriorBill.findById(billId);
+        if (!bill) {
+            return res.status(404).json({ message: 'Bill not found' });
+        }
+
+        bill.projectId = null;
+        await bill.save();
+
+        res.json({
+            success: true,
+            message: 'Bill disconnected from project successfully',
+            data: bill
+        });
+    } catch (error) {
+        console.error('Error disconnecting bill from project:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error disconnecting bill from project',
+            error: error.message
+        });
+    }
+});
+
+// Get all bills for a specific project
+router.get('/projects/:projectId/bills', auth, async (req, res) => {
+    try {
+        const { projectId } = req.params;
+
+        const bills = await InteriorBill.find({ projectId })
+            .sort({ date: -1 })
+            .populate('originalBillId', 'billNumber');
+
+        res.json({
+            success: true,
+            data: bills
+        });
+    } catch (error) {
+        console.error('Error fetching project bills:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching project bills',
             error: error.message
         });
     }

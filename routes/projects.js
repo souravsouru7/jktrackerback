@@ -4,10 +4,10 @@ const Project = require('../models/Project');
 const Entry = require('../models/Entry'); // Add this line
 const auth = require('../middleware/auth');
 const mongoose = require('mongoose');
-// Update the create project route
+// Update the create project route to include status
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, description, budget } = req.body;
+    const { name, description, budget, status } = req.body;
     const userId = req.user._id;
 
     if (!name) {
@@ -19,11 +19,17 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ message: 'Budget must be a positive number' });
     }
 
+    // Validate status if provided
+    if (status && !['inProgress', 'progress', 'finished'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status value' });
+    }
+
     const project = new Project({ 
       userId, 
       name, 
       description,
-      budget: budget || 0 
+      budget: budget || 0,
+      status: status || 'inProgress'
     });
     await project.save();
 
@@ -223,10 +229,10 @@ router.get('/project-summary', async (req, res) => {
       return res.status(400).json({ message: 'userId is required' });
     }
 
-    // Get all projects for user
+
     const projects = await Project.find({ userId });
 
-    // Calculate totals per project
+
     const projectSummaries = await Promise.all(projects.map(async (project) => {
       const entries = await Entry.aggregate([
         {
@@ -302,6 +308,54 @@ router.put('/:id/budget', auth, async (req, res) => {
     if (error.kind === 'ObjectId') {
       return res.status(400).json({ message: 'Invalid project ID' });
     }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add a new route to update project status
+router.put('/:id/status', auth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const projectId = req.params.id;
+
+    // Validate status
+    if (!status || !['inProgress', 'progress', 'finished'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status value' });
+    }
+
+    // Check if project exists and belongs to user
+    const project = await Project.findOne({ _id: projectId, userId: req.user._id });
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found or unauthorized' });
+    }
+
+    // Update status
+    project.status = status;
+    await project.save();
+
+    res.status(200).json({ message: 'Status updated successfully', project });
+  } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ message: 'Invalid project ID' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add a route to get projects filtered by status
+router.get('/by-status/:status', auth, async (req, res) => {
+  try {
+    const { status } = req.params;
+    const userId = req.user._id;
+
+    // Validate status
+    if (!['inProgress', 'progress', 'finished'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status value' });
+    }
+
+    const projects = await Project.find({ userId, status });
+    res.status(200).json(projects);
+  } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
