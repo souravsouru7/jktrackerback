@@ -666,13 +666,19 @@ router.post('/bills/:billId/connect-project/:projectId', auth, async (req, res) 
             });
         }
 
+        // If the bill is an estimate, update the project's budget
+        if (bill.documentType === 'Estimate') {
+            project.budget = bill.finalAmount; // Using finalAmount instead of grandTotal to account for discounts
+            await project.save();
+        }
+
         // Update bill with project reference
         bill.projectId = projectId;
         const updatedBill = await bill.save();
 
         // Return the updated bill with project details
         const populatedBill = await InteriorBill.findById(updatedBill._id)
-            .populate('projectId', 'name status'); // Populate basic project details
+            .populate('projectId', 'name status budget'); // Added budget to populated fields
 
         res.json({
             success: true,
@@ -698,6 +704,15 @@ router.post('/bills/:billId/disconnect-project', auth, async (req, res) => {
         const bill = await InteriorBill.findById(billId);
         if (!bill) {
             return res.status(404).json({ message: 'Bill not found' });
+        }
+
+        // If this is an estimate, remove its amount from the project's budget
+        if (bill.documentType === 'Estimate' && bill.projectId) {
+            const project = await Project.findById(bill.projectId);
+            if (project) {
+                project.budget = 0; // Reset budget to 0 when estimate is disconnected
+                await project.save();
+            }
         }
 
         bill.projectId = null;

@@ -4,7 +4,7 @@ const Project = require('../models/Project');
 const Entry = require('../models/Entry'); // Add this line
 const auth = require('../middleware/auth');
 const mongoose = require('mongoose');
-// Update the create project route to include status
+
 router.post('/', auth, async (req, res) => {
   try {
     const { name, description, budget, status } = req.body;
@@ -19,8 +19,7 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ message: 'Budget must be a positive number' });
     }
 
-    // Validate status if provided
-    if (status && !['inProgress', 'progress', 'finished'].includes(status)) {
+    if (status && !['Under Disscussion', 'In Progress', 'Completed'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
 
@@ -29,7 +28,7 @@ router.post('/', auth, async (req, res) => {
       name, 
       description,
       budget: budget || 0,
-      status: status || 'inProgress'
+      status: status || 'Under Disscussion'
     });
     await project.save();
 
@@ -319,7 +318,7 @@ router.put('/:id/status', auth, async (req, res) => {
     const projectId = req.params.id;
 
     // Validate status
-    if (!status || !['inProgress', 'progress', 'finished'].includes(status)) {
+    if (status && !['Under Disscussion', 'In Progress', 'Completed'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
 
@@ -348,8 +347,7 @@ router.get('/by-status/:status', auth, async (req, res) => {
     const { status } = req.params;
     const userId = req.user._id;
 
-    // Validate status
-    if (!['inProgress', 'progress', 'finished'].includes(status)) {
+    if (status && !['Under Disscussion', 'In Progress', 'Completed'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
 

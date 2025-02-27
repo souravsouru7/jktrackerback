@@ -8,8 +8,8 @@ const projectSchema = new mongoose.Schema({
   budget: { type: Number, default: 0 },
   status: {
     type: String,
-    enum: ['inProgress', 'progress', 'finished'],
-    default: 'inProgress'
+    enum: ['Under Disscussion', 'In Progress', 'Completed'],
+    default: 'Under Disscussion'
   }
 }, { timestamps: true });
 
