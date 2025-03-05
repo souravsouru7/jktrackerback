@@ -367,6 +367,103 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Add shared expense across in-progress projects
+router.post('/shared-expense', async (req, res) => {
+  try {
+    const { userId, amount, category, description, date } = req.body;
+
+    if (!userId || !amount || !category) {
+      return res.status(400).json({
+        message: 'userId, amount, and category are required fields'
+      });
+    }
+
+    // Find all 'In Progress' projects for the user
+    const inProgressProjects = await Project.find({
+      userId,
+      status: 'In Progress'
+    });
+
+    if (inProgressProjects.length === 0) {
+      return res.status(400).json({
+        message: 'No in-progress projects found to distribute the expense'
+      });
+    }
+
+    // Calculate distributed amount per project
+    const distributedAmount = amount / inProgressProjects.length;
+    const entries = [];
+
+    // Create expense entries for each project
+    for (const project of inProgressProjects) {
+      const entry = new Entry({
+        userId,
+        projectId: project._id,
+        type: 'Expense',
+        amount: distributedAmount,
+        category,
+        description: description ? `${description} (Shared Expense)` : 'Shared Expense',
+        date: date || Date.now(),
+        isSharedExpense: true,
+        originalAmount: amount
+      });
+
+      await entry.save();
+      entries.push(entry);
+    }
+
+    res.status(201).json({
+      message: 'Shared expense created successfully',
+      originalAmount: amount,
+      distributedAmount,
+      numberOfProjects: inProgressProjects.length,
+      entries
+    });
+
+  } catch (error) {
+    console.error('Shared expense error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add a route to get all shared expenses
+router.get('/shared-expenses/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const sharedExpenses = await Entry.find({
+      userId,
+      isSharedExpense: true
+    }).populate('projectId', 'name');
+
+    // Group shared expenses by original entry
+    const groupedExpenses = sharedExpenses.reduce((acc, entry) => {
+      const key = `${entry.date}_${entry.originalAmount}_${entry.category}`;
+      if (!acc[key]) {
+        acc[key] = {
+          date: entry.date,
+          originalAmount: entry.originalAmount,
+          distributedAmount: entry.amount,
+          category: entry.category,
+          description: entry.description,
+          projects: []
+        };
+      }
+      acc[key].projects.push({
+        projectId: entry.projectId._id,
+        projectName: entry.projectId.name,
+        amount: entry.amount
+      });
+      return acc;
+    }, {});
+
+    res.status(200).json(Object.values(groupedExpenses));
+  } catch (error) {
+    console.error('Get shared expenses error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Update an entry (add this before the PATCH route)
 router.put('/:id', async (req, res) => {
   try {
