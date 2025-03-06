@@ -239,8 +239,39 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
             return res.status(404).json({ message: 'Bill not found' });
         }
 
+        // Ensure all required fields exist with fallbacks
+        const safeData = {
+            companyDetails: {
+                name: bill.companyDetails?.name || 'JK Interiors',
+                address: bill.companyDetails?.address || '',
+                phones: Array.isArray(bill.companyDetails?.phones) ? bill.companyDetails.phones : []
+            },
+            billNumber: bill.billNumber || 'N/A',
+            date: bill.date || new Date(),
+            title: bill.title || 'None',
+            clientName: bill.clientName || 'N/A',
+            clientPhone: bill.clientPhone || 'N/A',
+            clientEmail: bill.clientEmail || 'N/A',
+            clientAddress: bill.clientAddress || 'N/A',
+            documentType: bill.documentType || 'Invoice',
+            items: bill.items?.map(item => ({
+                particular: item.particular || 'N/A',
+                description: item.description || '',
+                unit: item.unit || 'Lump',
+                width: item.width || 0,
+                height: item.height || 0,
+                pricePerUnit: item.pricePerUnit || 0,
+                total: item.total || 0
+            })) || [],
+            grandTotal: bill.grandTotal || 0,
+            discount: bill.discount || 0,
+            finalAmount: bill.finalAmount || 0,
+            termsAndConditions: Array.isArray(bill.termsAndConditions) ? 
+                bill.termsAndConditions.filter(term => term && term.trim() !== '') : []
+        };
+
         // Only include non-empty terms and conditions
-        const processedTerms = bill.termsAndConditions.filter(term => term && term.trim() !== '').map(term => String(term));
+        const processedTerms = safeData.termsAndConditions.map(term => String(term));
 
         // Create table data for items with enhanced styling
         const tableBody = [
@@ -254,7 +285,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 { text: 'Price', style: 'tableHeader', alignment: 'right' },
                 { text: 'Total', style: 'tableHeader', alignment: 'right' }
             ],
-            ...bill.items.map(item => [
+            ...safeData.items.map(item => [
                 { text: item.particular, style: 'tableCell' },
                 { text: item.description, style: 'tableCell' },
                 { text: item.unit, style: 'tableCell' },
@@ -303,9 +334,9 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         {
                             width: '*',
                             stack: [
-                                { text: bill.companyDetails.name, style: 'companyName', alignment: 'right' },
-                                { text: bill.companyDetails.address, style: 'companyDetails', alignment: 'right' },
-                                { text: bill.companyDetails.phones.join(' | '), style: 'companyDetails', alignment: 'right' }
+                                { text: safeData.companyDetails.name, style: 'companyName', alignment: 'right' },
+                                { text: safeData.companyDetails.address, style: 'companyDetails', alignment: 'right' },
+                                { text: safeData.companyDetails.phones.join(' | '), style: 'companyDetails', alignment: 'right' }
                             ],
                             margin: [0, 10, 0, 10]
                         }
@@ -318,7 +349,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         {
                             stack: [
                                 { 
-                                    text: bill.documentType.toUpperCase(),
+                                    text: safeData.documentType.toUpperCase(),
                                     style: 'mainHeader',
                                     alignment: 'center',
                                     margin: [0, 30, 0, 20]
@@ -335,20 +366,20 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         widths: ['*', '*'],
                         body: [
                             [
-                                { text: `Bill Number: ${bill.billNumber}`, style: 'billDetailsCell' },
-                                { text: `Date: ${bill.date.toLocaleDateString('en-IN')}`, style: 'billDetailsCell', alignment: 'right' }
+                                { text: `Bill Number: ${safeData.billNumber}`, style: 'billDetailsCell' },
+                                { text: `Date: ${safeData.date.toLocaleDateString('en-IN')}`, style: 'billDetailsCell', alignment: 'right' }
                             ],
                             [
                                 { 
                                     stack: [
                                         { 
-                                            text: `${bill.title === 'None' ? '' : `${bill.title}. `}${bill.clientName}`, 
+                                            text: `${safeData.title === 'None' ? '' : `${safeData.title}. `}${safeData.clientName}`, 
                                             style: 'customerName', 
                                             margin: [0, 0, 0, 8] 
                                         },
-                                        { text: `Phone: ${bill.clientPhone}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
-                                        { text: `Email: ${bill.clientEmail}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
-                                        { text: `Address: ${bill.clientAddress}`, style: 'customerInfo' }
+                                        { text: `Phone: ${safeData.clientPhone}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                                        { text: `Email: ${safeData.clientEmail}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
+                                        { text: `Address: ${safeData.clientAddress}`, style: 'customerInfo' }
                                     ],
                                     colSpan: 2
                                 },
@@ -400,12 +431,12 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                     margin: [0, 0, 15, 0]
                                 },
                                 {
-                                    text: formatCurrency(bill.grandTotal).split('₹')[1].trim(),
+                                    text: formatCurrency(safeData.grandTotal).split('₹')[1].trim(),
                                     style: 'grandTotalAmount',
                                     alignment: 'right'
                                 }
                             ],
-                            bill.discount > 0 ? [
+                            safeData.discount > 0 ? [
                                 {
                                     text: 'DISCOUNT:',
                                     style: 'discountLabel',
@@ -413,7 +444,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                     margin: [0, 0, 15, 0]
                                 },
                                 {
-                                    text: `- ${formatCurrency(bill.discount).split('₹')[1].trim()}`,
+                                    text: `- ${formatCurrency(safeData.discount).split('₹')[1].trim()}`,
                                     style: 'discountAmount',
                                     alignment: 'right'
                                 }
@@ -426,7 +457,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                     margin: [0, 0, 15, 0]
                                 },
                                 {
-                                    text: formatCurrency(bill.finalAmount).split('₹')[1].trim(),
+                                    text: formatCurrency(safeData.finalAmount).split('₹')[1].trim(),
                                     style: 'finalAmountValue',
                                     alignment: 'right'
                                 }
@@ -581,7 +612,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
 
         // Set response headers
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=interior-bill-${bill.billNumber}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename=interior-bill-${safeData.billNumber}.pdf`);
 
         // Pipe the PDF to the response
         pdfDoc.pipe(res);
@@ -590,7 +621,10 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
     } catch (error) {
         console.error('PDF Generation Error:', error);
         if (!res.headersSent) {
-            res.status(500).json({ message: 'Error generating PDF' });
+            res.status(500).json({ 
+                message: 'Error generating PDF',
+                details: error.message 
+            });
         }
     }
 });
