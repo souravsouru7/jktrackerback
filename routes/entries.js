@@ -49,7 +49,7 @@ const generatePdfDefinition = async (project, entry, totalIncome) => {
   // Company details (match with interior bill)
   const companyDetails = {
     name: 'JK Interiors',
-    address: '# 1924, 1st Floor, 11th Main Road, HAL 2nd Stage, Indiranagar, Bangalore - 560008',
+    address: '502, Spellbound towers,Sainikpuri,Secunderabad,Telangana 501301',
     phones: ['080-41154115', '+91 9845157333']
   };
   
