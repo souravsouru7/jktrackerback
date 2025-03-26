@@ -157,7 +157,8 @@ router.put('/bills/:id', auth, async (req, res) => {
             paymentTerms,
             termsAndConditions,
             documentType,
-            discount
+            discount,
+            date // Add this to handle incoming date
         } = req.body;
 
         // Calculate totals with validation for required fields
@@ -171,9 +172,7 @@ router.put('/bills/:id', auth, async (req, res) => {
                 processedItem.squareFeet = item.width * item.height;
                 processedItem.total = processedItem.squareFeet * item.pricePerUnit;
             } else {
-                // For Lump sum and Ls items
                 processedItem.total = item.pricePerUnit;
-                // Set these to undefined or null for non-Sft items
                 processedItem.width = undefined;
                 processedItem.height = undefined;
                 processedItem.squareFeet = undefined;
@@ -185,7 +184,6 @@ router.put('/bills/:id', auth, async (req, res) => {
         const discountAmount = discount || 0;
         const finalAmount = grandTotal - discountAmount;
 
-        // Process terms and conditions - only include selected terms
         const processedTerms = termsAndConditions.filter(term => term && term.trim() !== '');
 
         const updatedBill = await InteriorBill.findByIdAndUpdate(
@@ -203,8 +201,9 @@ router.put('/bills/:id', auth, async (req, res) => {
                 companyDetails,
                 paymentTerms,
                 termsAndConditions: processedTerms,
-                documentType: documentType || 'Invoice', 
-                $currentDate: { lastModified: true }
+                documentType: documentType || 'Invoice',
+                date: date ? new Date(date) : undefined, // Update the date if provided
+                lastModified: new Date()
             },
             { 
                 new: true, 

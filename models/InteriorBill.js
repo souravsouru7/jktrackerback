@@ -69,9 +69,9 @@ const interiorBillSchema = new mongoose.Schema({
     }
 });
 
-// Add pre-save middleware to ensure termsAndConditions are strings
+
 interiorBillSchema.pre('save', function(next) {
-    // Convert terms and conditions to strings if they're objects
+
     if (this.termsAndConditions) {
         this.termsAndConditions = this.termsAndConditions.map(term => 
             typeof term === 'object' && term.text ? term.text : String(term)
