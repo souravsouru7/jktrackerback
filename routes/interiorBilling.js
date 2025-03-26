@@ -203,13 +203,13 @@ router.put('/bills/:id', auth, async (req, res) => {
                 companyDetails,
                 paymentTerms,
                 termsAndConditions: processedTerms,
-                documentType: documentType || 'Invoice', // Default to Invoice if not specified
+                documentType: documentType || 'Invoice', 
                 $currentDate: { lastModified: true }
             },
             { 
                 new: true, 
                 runValidators: true,
-                context: 'query' // This ensures that the validation context is maintained
+                context: 'query' 
             }
         );
 
@@ -270,7 +270,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 bill.termsAndConditions.filter(term => term && term.trim() !== '') : []
         };
 
-        // Only include non-empty terms and conditions
+
         const processedTerms = safeData.termsAndConditions.map(term => String(term));
 
         // Create table data for items with enhanced styling
@@ -466,8 +466,8 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     },
                     layout: 'noBorders'
                 },
-                // Terms and Conditions in a box
-                {
+                // Terms and Conditions in a box (only if terms exist)
+                processedTerms.length > 0 ? {
                     style: 'termsSection',
                     table: {
                         widths: ['*'],
@@ -486,7 +486,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         hLineColor: function(i, node) { return '#7F5539'; },
                         vLineColor: function(i, node) { return '#7F5539'; }
                     }
-                },
+                } : null,
                 // Footer
                 {
                     stack: [
