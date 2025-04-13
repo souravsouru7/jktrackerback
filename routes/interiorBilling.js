@@ -20,7 +20,13 @@ const fonts = {
 const printer = new PdfPrinter(fonts);
 
 // Helper function to format currency
-const formatCurrency = (amount) => `₹ ${amount.toLocaleString('en-IN')}`;
+const formatCurrency = (amount) => {
+    const formattedAmount = amount.toLocaleString('en-IN', {
+        maximumFractionDigits: 0,
+        minimumFractionDigits: 0
+    });
+    return `₹ ${formattedAmount}`;
+};
 
 // Create new bill
 router.post('/bills', auth, async (req, res) => {
@@ -291,8 +297,16 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 { text: item.unit === 'Sft' ? item.width.toString() : '-', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? item.height.toString() : '-', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? (item.width * item.height).toString() : '-', style: 'tableCell', alignment: 'right' },
-                { text: formatCurrency(item.pricePerUnit), style: 'tableCell', alignment: 'right' },
-                { text: formatCurrency(item.total), style: 'tableCell', alignment: 'right' }
+                { 
+                    text: formatCurrency(item.pricePerUnit).replace(/^₹\s*/, ''),
+                    style: 'tableCell',
+                    alignment: 'right'
+                },
+                { 
+                    text: formatCurrency(item.total).replace(/^₹\s*/, ''),
+                    style: 'tableCell',
+                    alignment: 'right'
+                }
             ])
         ];
 
@@ -365,8 +379,17 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         widths: ['*', '*'],
                         body: [
                             [
-                                { text: `Bill Number: ${safeData.billNumber}`, style: 'billDetailsCell' },
-                                { text: `Date: ${safeData.date.toLocaleDateString('en-IN')}`, style: 'billDetailsCell', alignment: 'right' }
+                                { 
+                                    text: `Bill Number: ${safeData.billNumber}`, 
+                                    style: 'billDetailsCell',
+                                    border: [true, true, false, false]
+                                },
+                                { 
+                                    text: `Date: ${safeData.date.toLocaleDateString('en-IN')}`, 
+                                    style: 'billDetailsCell', 
+                                    alignment: 'right',
+                                    border: [false, true, true, false]
+                                }
                             ],
                             [
                                 { 
@@ -380,13 +403,15 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                         { text: `Email: ${safeData.clientEmail}`, style: 'customerInfo', margin: [0, 0, 0, 8] },
                                         { text: `Address: ${safeData.clientAddress}`, style: 'customerInfo' }
                                     ],
-                                    colSpan: 2
+                                    colSpan: 2,
+                                    border: [true, false, true, true]
                                 },
                                 {}
                             ]
                         ]
                     },
                     layout: {
+                        defaultBorder: false,
                         hLineWidth: function(i, node) { return 0.5; },
                         vLineWidth: function(i, node) { return 0.5; },
                         hLineColor: function(i, node) { return '#7F5539'; },
@@ -430,7 +455,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                     margin: [0, 0, 15, 0]
                                 },
                                 {
-                                    text: formatCurrency(safeData.grandTotal).split('₹')[1].trim(),
+                                    text: formatCurrency(safeData.grandTotal).replace(/^₹\s*/, ''),
                                     style: 'grandTotalAmount',
                                     alignment: 'right'
                                 }
@@ -443,7 +468,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                     margin: [0, 0, 15, 0]
                                 },
                                 {
-                                    text: `- ${formatCurrency(safeData.discount).split('₹')[1].trim()}`,
+                                    text: `- ${formatCurrency(safeData.discount).replace(/^₹\s*/, '')}`,
                                     style: 'discountAmount',
                                     alignment: 'right'
                                 }
@@ -456,7 +481,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                                     margin: [0, 0, 15, 0]
                                 },
                                 {
-                                    text: formatCurrency(safeData.finalAmount).split('₹')[1].trim(),
+                                    text: formatCurrency(safeData.finalAmount).replace(/^₹\s*/, ''),
                                     style: 'finalAmountValue',
                                     alignment: 'right'
                                 }
