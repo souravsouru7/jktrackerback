@@ -5,7 +5,7 @@ const Project = require('../models/Project');
 const XLSX = require('xlsx');
 const PdfPrinter = require('pdfmake');
 const path = require('path');
-
+const Category = require('..//models/Category');
 // Define fonts using standard fonts
 const fonts = {
   Helvetica: {
@@ -310,12 +310,36 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { userId, projectId, type, amount, category, description, date } = req.body;
+    const { userId, projectId, type, amount, category, description, date, generateBill } = req.body;
 
     if (!userId || !projectId || !type || !amount || !category) {
       return res.status(400).json({ 
         message: 'userId, projectId, type, amount and category are required fields' 
       });
+    }
+
+    // If it's a custom category (not in default list), save it
+    const defaultCategories = {
+      Expense: [
+        "Food", "Accommodation", "Carpenter", "Carpenter material", "Painter", 
+        "Paint material", "Fall ceiling", "Ceiling material", "Electrian", 
+        "Electrical material", "Jashwanth", "kushal", "JK", "Plumber", 
+        "Plumbing material", "Tiles", "Tiles material", "Glass", "Other"
+      ],
+      Income: ["Advance", "Payment", "Token", "Other"]
+    };
+
+    if (!defaultCategories[type].includes(category)) {
+      // Check if category already exists
+      const existingCategory = await Category.findOne({ userId, type, category });
+      if (!existingCategory) {
+        const newCategory = new Category({
+          userId,
+          type,
+          category
+        });
+        await newCategory.save();
+      }
     }
 
     const entry = new Entry({
@@ -330,8 +354,8 @@ router.post('/', async (req, res) => {
 
     await entry.save();
 
-    // Generate payment bill only for income entries
-    if (type === 'Income') {
+    // Generate payment bill only for income entries and if generateBill is true
+    if (type === 'Income' && generateBill) {
       const project = await Project.findById(projectId);
       if (!project) {
         return res.status(404).json({ message: 'Project not found' });
@@ -363,6 +387,7 @@ router.post('/', async (req, res) => {
       res.status(201).json({ entry });
     }
   } catch (error) {
+    console.error('Error creating entry:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -597,6 +622,59 @@ router.get('/:id/payment-bill', async (req, res) => {
     // Pipe the PDF document to the response
     pdfDoc.pipe(res);
     pdfDoc.end();
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+// Add these routes before module.exports = router;
+
+// Get all custom categories for a user
+router.get('/categories/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const categories = await Category.find({ userId });
+    
+    // Format categories by type
+    const formattedCategories = {
+      Expense: [],
+      Income: []
+    };
+    
+    categories.forEach(category => {
+      formattedCategories[category.type].push(category.category);
+    });
+    
+    res.status(200).json(formattedCategories);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add a new custom category
+router.post('/categories', async (req, res) => {
+  try {
+    const { userId, type, category } = req.body;
+    
+    if (!userId || !type || !category) {
+      return res.status(400).json({ 
+        message: 'userId, type, and category are required fields' 
+      });
+    }
+    
+    // Check if category already exists
+    const existingCategory = await Category.findOne({ userId, type, category });
+    if (existingCategory) {
+      return res.status(400).json({ message: 'Category already exists' });
+    }
+    
+    const newCategory = new Category({
+      userId,
+      type,
+      category
+    });
+    
+    await newCategory.save();
+    res.status(201).json(newCategory);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

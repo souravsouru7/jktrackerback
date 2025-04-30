@@ -11,6 +11,7 @@ const analyticsRoutes = require('./routes/analytics');
 const projectRoutes = require('./routes/projects');
 const interiorBillingRoutes = require('./routes/interiorBilling');
 const chatRoutes = require('./routes/chat');
+const categoryRoutes = require('./routes/categories');
 
 // Add this line
 let cors=require("cors");
@@ -29,6 +30,7 @@ app.use('/analytics', analyticsRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/interior', interiorBillingRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/categories', categoryRoutes);
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
