@@ -14,6 +14,10 @@ const interiorItemSchema = new mongoose.Schema({
         enum: ['Sft', 'Lump', 'Ls'],
         required: true
     },
+    quantity: {
+        type: Number,
+        default: 0
+    },
     width: {
         type: Number,
         required: function() { return this.unit === 'Sft'; }

@@ -54,9 +54,9 @@ router.post('/bills', auth, async (req, res) => {
         const calculatedItems = items.map(item => {
             if (item.unit === 'Sft') {
                 item.squareFeet = item.width * item.height;
-                item.total = item.squareFeet * item.pricePerUnit;
+                item.total = item.squareFeet * item.pricePerUnit * (item.quantity || 1);
             } else {
-                item.total = item.pricePerUnit; // For Lump sum and Ls items
+                item.total = item.pricePerUnit * (item.quantity || 1); // For Lump sum and Ls items
             }
             return item;
         });
@@ -176,9 +176,9 @@ router.put('/bills/:id', auth, async (req, res) => {
                     throw new Error('Width and height are required for Sft units');
                 }
                 processedItem.squareFeet = item.width * item.height;
-                processedItem.total = processedItem.squareFeet * item.pricePerUnit;
+                processedItem.total = processedItem.squareFeet * item.pricePerUnit * (item.quantity || 1);
             } else {
-                processedItem.total = item.pricePerUnit;
+                processedItem.total = item.pricePerUnit * (item.quantity || 1);
                 processedItem.width = undefined;
                 processedItem.height = undefined;
                 processedItem.squareFeet = undefined;
@@ -263,6 +263,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 particular: item.particular || 'N/A',
                 description: item.description || '',
                 unit: item.unit || 'Lump',
+                quantity: item.quantity || 1,
                 width: item.width || 0,
                 height: item.height || 0,
                 pricePerUnit: item.pricePerUnit || 0,
@@ -284,6 +285,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 { text: 'Particular', style: 'tableHeader' },
                 { text: 'Description', style: 'tableHeader' },
                 { text: 'Unit', style: 'tableHeader' },
+                { text: 'Qty', style: 'tableHeader', alignment: 'right' },
                 { text: 'Width', style: 'tableHeader', alignment: 'right' },
                 { text: 'Height', style: 'tableHeader', alignment: 'right' },
                 { text: 'Sft', style: 'tableHeader', alignment: 'right' },
@@ -294,6 +296,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 { text: item.particular, style: 'tableCell' },
                 { text: item.description, style: 'tableCell' },
                 { text: item.unit, style: 'tableCell' },
+                { text: item.quantity?.toString() || '0', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? item.width.toString() : '-', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? item.height.toString() : '-', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? (item.width * item.height).toString() : '-', style: 'tableCell', alignment: 'right' },
@@ -428,7 +431,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     style: 'itemsTable',
                     table: {
                         headerRows: 1,
-                        widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+                        widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
                         body: tableBody
                     },
                     layout: {
