@@ -680,4 +680,39 @@ router.post('/categories', async (req, res) => {
   }
 });
 
+// Get income entries for in-progress projects
+router.get('/income/in-progress', async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ message: 'userId is required' });
+    }
+
+    // Find all in-progress projects for the user
+    const inProgressProjects = await Project.find({
+      userId,
+      status: 'In Progress'
+    });
+
+    if (inProgressProjects.length === 0) {
+      return res.status(200).json({ entries: [] });
+    }
+
+    // Get all income entries for these projects
+    const entries = await Entry.find({
+      userId,
+      projectId: { $in: inProgressProjects.map(p => p._id) },
+      type: 'Income'
+    })
+    .populate('projectId', 'name budget')
+    .sort({ date: -1 });
+
+    res.status(200).json(entries);
+  } catch (error) {
+    console.error('Get income entries error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
