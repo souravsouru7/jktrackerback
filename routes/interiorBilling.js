@@ -285,10 +285,10 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 { text: 'Particular', style: 'tableHeader' },
                 { text: 'Description', style: 'tableHeader' },
                 { text: 'Unit', style: 'tableHeader' },
-                { text: 'Qty', style: 'tableHeader', alignment: 'right' },
                 { text: 'Width', style: 'tableHeader', alignment: 'right' },
                 { text: 'Height', style: 'tableHeader', alignment: 'right' },
                 { text: 'Sft', style: 'tableHeader', alignment: 'right' },
+                { text: 'Qty', style: 'tableHeader', alignment: 'right' },
                 { text: 'Price', style: 'tableHeader', alignment: 'right' },
                 { text: 'Total', style: 'tableHeader', alignment: 'right' }
             ],
@@ -296,10 +296,10 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 { text: item.particular, style: 'tableCell' },
                 { text: item.description, style: 'tableCell' },
                 { text: item.unit, style: 'tableCell' },
-                { text: item.quantity?.toString() || '0', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? item.width.toString() : '-', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? item.height.toString() : '-', style: 'tableCell', alignment: 'right' },
                 { text: item.unit === 'Sft' ? (item.width * item.height).toString() : '-', style: 'tableCell', alignment: 'right' },
+                { text: item.quantity?.toString() || '0', style: 'tableCell', alignment: 'right' },
                 { 
                     text: formatCurrency(item.pricePerUnit).replace(/^₹\s*/, ''),
                     style: 'tableCell',
