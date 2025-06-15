@@ -53,7 +53,9 @@ router.post('/bills', auth, async (req, res) => {
         // Calculate totals
         const calculatedItems = items.map(item => {
             if (item.unit === 'Sft') {
-                item.squareFeet = item.width * item.height;
+                item.squareFeet = (item.particular?.toLowerCase().includes('ms') || item.particular?.toLowerCase().includes('ss'))
+                    ? item.width * item.height * (item.depth || 1)
+                    : item.width * item.height;
                 item.total = item.squareFeet * item.pricePerUnit * (item.quantity || 1);
             } else {
                 item.total = item.pricePerUnit * (item.quantity || 1); // For Lump sum and Ls items
@@ -164,7 +166,7 @@ router.put('/bills/:id', auth, async (req, res) => {
             termsAndConditions,
             documentType,
             discount,
-            date // Add this to handle incoming date
+            date
         } = req.body;
 
         // Calculate totals with validation for required fields
@@ -175,12 +177,17 @@ router.put('/bills/:id', auth, async (req, res) => {
                 if (!item.width || !item.height) {
                     throw new Error('Width and height are required for Sft units');
                 }
-                processedItem.squareFeet = item.width * item.height;
+                // Check if material is MS or SS
+                const isMSorSS = item.description?.toLowerCase().includes('ms') || item.description?.toLowerCase().includes('ss');
+                processedItem.squareFeet = isMSorSS 
+                    ? item.width * item.height * (item.depth || 1)
+                    : item.width * item.height;
                 processedItem.total = processedItem.squareFeet * item.pricePerUnit * (item.quantity || 1);
             } else {
                 processedItem.total = item.pricePerUnit * (item.quantity || 1);
                 processedItem.width = undefined;
                 processedItem.height = undefined;
+                processedItem.depth = undefined;
                 processedItem.squareFeet = undefined;
             }
             return processedItem;
@@ -208,7 +215,7 @@ router.put('/bills/:id', auth, async (req, res) => {
                 paymentTerms,
                 termsAndConditions: processedTerms,
                 documentType: documentType || 'Invoice',
-                date: date ? new Date(date) : undefined, // Update the date if provided
+                date: date ? new Date(date) : undefined,
                 lastModified: new Date()
             },
             { 
@@ -241,7 +248,10 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
     try {
         const bill = await InteriorBill.findById(req.params.id);
         if (!bill) {
-            return res.status(404).json({ message: 'Bill not found' });
+            return res.status(404).json({ 
+                success: false,
+                message: 'Bill not found' 
+            });
         }
 
         // Ensure all required fields exist with fallbacks
@@ -266,6 +276,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 quantity: item.quantity || 1,
                 width: item.width || 0,
                 height: item.height || 0,
+                depth: item.depth || 0,
                 pricePerUnit: item.pricePerUnit || 0,
                 total: item.total || 0
             })) || [],
@@ -276,41 +287,54 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 bill.termsAndConditions.filter(term => term && term.trim() !== '') : []
         };
 
-
         const processedTerms = safeData.termsAndConditions.map(term => String(term));
 
         // Create table data for items with enhanced styling
         const tableBody = [
             [
-                { text: 'Particular', style: 'tableHeader' },
-                { text: 'Description', style: 'tableHeader' },
-                { text: 'Unit', style: 'tableHeader' },
-                { text: 'Width', style: 'tableHeader', alignment: 'right' },
-                { text: 'Height', style: 'tableHeader', alignment: 'right' },
-                { text: 'Sft', style: 'tableHeader', alignment: 'right' },
-                { text: 'Qty', style: 'tableHeader', alignment: 'right' },
-                { text: 'Price', style: 'tableHeader', alignment: 'right' },
-                { text: 'Total', style: 'tableHeader', alignment: 'right' }
+                { text: 'Particular', style: 'tableHeader', width: 'auto' },
+                { text: 'Description', style: 'tableHeader', width: '*' },
+                { text: 'Unit', style: 'tableHeader', width: 'auto' },
+                { text: 'Width', style: 'tableHeader', width: 'auto', alignment: 'right' },
+                { text: 'Height', style: 'tableHeader', width: 'auto', alignment: 'right' },
+                { text: 'Depth', style: 'tableHeader', width: 'auto', alignment: 'right' },
+                { text: 'Sft', style: 'tableHeader', width: 'auto', alignment: 'right' },
+                { text: 'Qty', style: 'tableHeader', width: 'auto', alignment: 'right' },
+                { text: 'Price', style: 'tableHeader', width: 'auto', alignment: 'right' },
+                { text: 'Total', style: 'tableHeader', width: 'auto', alignment: 'right' }
             ],
-            ...safeData.items.map(item => [
-                { text: item.particular, style: 'tableCell' },
-                { text: item.description, style: 'tableCell' },
-                { text: item.unit, style: 'tableCell' },
-                { text: item.unit === 'Sft' ? item.width.toString() : '-', style: 'tableCell', alignment: 'right' },
-                { text: item.unit === 'Sft' ? item.height.toString() : '-', style: 'tableCell', alignment: 'right' },
-                { text: item.unit === 'Sft' ? (item.width * item.height).toString() : '-', style: 'tableCell', alignment: 'right' },
-                { text: item.quantity?.toString() || '0', style: 'tableCell', alignment: 'right' },
-                { 
-                    text: formatCurrency(item.pricePerUnit).replace(/^₹\s*/, ''),
-                    style: 'tableCell',
-                    alignment: 'right'
-                },
-                { 
-                    text: formatCurrency(item.total).replace(/^₹\s*/, ''),
-                    style: 'tableCell',
-                    alignment: 'right'
-                }
-            ])
+            ...safeData.items.map(item => {
+                // Calculate square feet based on material type
+                const isMSorSS = item.description?.toLowerCase().includes('ms') || item.description?.toLowerCase().includes('ss');
+                const squareFeet = item.unit === 'Sft' 
+                    ? (isMSorSS 
+                        ? (item.width || 0) * (item.height || 0) * (item.depth || 1)
+                        : (item.width || 0) * (item.height || 0))
+                    : 0;
+
+                return [
+                    { text: item.particular || 'N/A', style: 'tableCell', width: 'auto' },
+                    { text: item.description || '', style: 'tableCell', width: '*' },
+                    { text: item.unit || 'Lump', style: 'tableCell', width: 'auto' },
+                    { text: item.unit === 'Sft' ? (item.width || 0).toString() : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
+                    { text: item.unit === 'Sft' ? (item.height || 0).toString() : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
+                    { text: item.unit === 'Sft' && isMSorSS ? (item.depth || 0).toString() : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
+                    { text: item.unit === 'Sft' ? squareFeet.toFixed(2) : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
+                    { text: (item.quantity || 0).toString(), style: 'tableCell', width: 'auto', alignment: 'right' },
+                    { 
+                        text: formatCurrency(item.pricePerUnit || 0).replace(/^₹\s*/, ''),
+                        style: 'tableCell',
+                        width: 'auto',
+                        alignment: 'right'
+                    },
+                    { 
+                        text: formatCurrency(item.total || 0).replace(/^₹\s*/, ''),
+                        style: 'tableCell',
+                        width: 'auto',
+                        alignment: 'right'
+                    }
+                ];
+            })
         ];
 
         const docDefinition = {
@@ -336,7 +360,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                         y: 0,
                         w: 515,
                         h: 100,
-                        color: '#FFFFFF',  // Set the border color to white
+                        color: '#FFFFFF',
                         lineWidth: 1 
                     }]
                 },
@@ -431,7 +455,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     style: 'itemsTable',
                     table: {
                         headerRows: 1,
-                        widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+                        widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
                         body: tableBody
                     },
                     layout: {
@@ -641,16 +665,31 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=interior-bill-${safeData.billNumber}.pdf`);
 
-        // Pipe the PDF to the response
-        pdfDoc.pipe(res);
-        pdfDoc.end();
+        // Create a promise to handle the PDF generation
+        return new Promise((resolve, reject) => {
+            const chunks = [];
+            
+            pdfDoc.on('data', chunk => chunks.push(chunk));
+            pdfDoc.on('end', () => {
+                const pdfBuffer = Buffer.concat(chunks);
+                res.send(pdfBuffer);
+                resolve();
+            });
+            pdfDoc.on('error', err => {
+                console.error('PDF Generation Error:', err);
+                reject(err);
+            });
+
+            pdfDoc.end();
+        });
 
     } catch (error) {
         console.error('PDF Generation Error:', error);
         if (!res.headersSent) {
             res.status(500).json({ 
+                success: false,
                 message: 'Error generating PDF',
-                details: error.message 
+                error: error.message 
             });
         }
     }

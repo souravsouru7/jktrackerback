@@ -26,6 +26,12 @@ const interiorItemSchema = new mongoose.Schema({
         type: Number,
         required: function() { return this.unit === 'Sft'; }
     },
+    depth: {
+        type: Number,
+        required: function() { 
+            return this.unit === 'Sft' && (this.particular?.toLowerCase().includes('ms') || this.particular?.toLowerCase().includes('ss')); 
+        }
+    },
     squareFeet: {
         type: Number,
         required: function() { return this.unit === 'Sft'; }
