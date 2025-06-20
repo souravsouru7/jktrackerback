@@ -16,7 +16,13 @@ const categoryRoutes = require('./routes/categories');
 // Add this line
 let cors=require("cors");
 connectionDB()
-app.use(cors());
+const corsOptions = {
+  origin: '*', 
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use((err,req,res,next)=>{
     console.error(err.stack);
