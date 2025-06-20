@@ -6,6 +6,7 @@ const XLSX = require('xlsx');
 const PdfPrinter = require('pdfmake');
 const path = require('path');
 const Category = require('..//models/Category');
+const auth = require('../middleware/auth');
 // Define fonts using standard fonts
 const fonts = {
   Helvetica: {
@@ -490,7 +491,7 @@ router.get('/shared-expenses/:userId', async (req, res) => {
 });
 
 // Update an entry (add this before the PATCH route)
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { type, amount, category, description, date } = req.body;
@@ -510,7 +511,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Update an entry
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { type, amount, category, description, date } = req.body;
