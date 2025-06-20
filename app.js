@@ -19,7 +19,7 @@ connectionDB()
 const corsOptions = {
   origin: '*', 
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
 };
 
 app.use(cors(corsOptions));
