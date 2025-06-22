@@ -29,7 +29,8 @@ router.get('/summary', async (req, res) => {
         $match: { 
           userId: new mongoose.Types.ObjectId(userId),
           projectId: new mongoose.Types.ObjectId(projectId),
-          type: 'Income'
+          type: 'Income',
+          isIncomeFromOtherProject: { $ne: true }
         }
       },
       {
@@ -100,7 +101,11 @@ router.get('/monthly', async (req, res) => {
           date: {
             $gte: new Date(yearToQuery, 0, 1),
             $lt: new Date(yearToQuery + 1, 0, 1)
-          }
+          },
+          $or: [
+            { type: 'Expense' },
+            { type: 'Income', isIncomeFromOtherProject: { $ne: true } }
+          ]
         }
       },
       {

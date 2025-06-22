@@ -68,7 +68,11 @@ router.get('/income-vs-expense', async (req, res) => {
       { 
         $match: { 
           userId: new mongoose.Types.ObjectId(userId),
-          projectId: new mongoose.Types.ObjectId(projectId)
+          projectId: new mongoose.Types.ObjectId(projectId),
+          $or: [
+            { type: 'Expense' },
+            { type: 'Income', isIncomeFromOtherProject: { $ne: true } }
+          ]
         } 
       },
       { 

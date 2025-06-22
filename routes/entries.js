@@ -37,10 +37,22 @@ const formatCurrency = (amount) => {
 const calculateTotalIncome = async (projectId) => {
   const incomeEntries = await Entry.find({
     projectId: projectId,
-    type: 'Income'
+    type: 'Income',
+    isIncomeFromOtherProject: { $ne: true } // Exclude income from other projects
   });
   
   return incomeEntries.reduce((total, entry) => total + entry.amount, 0);
+};
+
+// Helper function to calculate total income from other projects for a project
+const calculateIncomeFromOtherProjects = async (projectId) => {
+  const incomeFromOtherProjects = await Entry.find({
+    projectId: projectId,
+    type: 'Income',
+    isIncomeFromOtherProject: true
+  });
+  
+  return incomeFromOtherProjects.reduce((total, entry) => total + entry.amount, 0);
 };
 
 // Helper function to generate PDF definition
@@ -350,7 +362,9 @@ router.post('/', async (req, res) => {
       amount,
       category,
       description,
-      date: date || Date.now()
+      date: date || Date.now(),
+      isIncomeFromOtherProject: false, // Default to false
+      sourceProjectId: null // Default to null
     });
 
     await entry.save();
@@ -712,6 +726,123 @@ router.get('/income/in-progress', async (req, res) => {
     res.status(200).json(entries);
   } catch (error) {
     console.error('Get income entries error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add income from other project
+router.post('/income-from-project', async (req, res) => {
+  try {
+    const { userId, currentProjectId, sourceProjectName, amount, description, date, generateBill } = req.body;
+
+    if (!userId || !currentProjectId || !sourceProjectName || !amount) {
+      return res.status(400).json({ 
+        message: 'userId, currentProjectId, sourceProjectName, and amount are required fields' 
+      });
+    }
+
+    // Find the source project by name
+    const sourceProject = await Project.findOne({ 
+      userId, 
+      name: sourceProjectName 
+    });
+
+    if (!sourceProject) {
+      return res.status(404).json({ message: 'Source project not found' });
+    }
+
+    // Create income entry for current project (marked as income from other project)
+    const incomeEntry = new Entry({
+      userId,
+      projectId: currentProjectId,
+      type: 'Income',
+      amount: parseFloat(amount),
+      category: sourceProjectName,
+      description: description || `Income from ${sourceProjectName}`,
+      date: date || Date.now(),
+      isIncomeFromOtherProject: true,
+      sourceProjectId: sourceProject._id
+    });
+
+    await incomeEntry.save();
+
+    // Create expense entry for the source project
+    const expenseEntry = new Entry({
+      userId,
+      projectId: sourceProject._id,
+      type: 'Expense',
+      amount: parseFloat(amount),
+      category: 'Project Payment',
+      description: `Payment to ${(await Project.findById(currentProjectId)).name}`,
+      date: date || Date.now()
+    });
+
+    await expenseEntry.save();
+
+    // Generate payment bill if requested
+    if (generateBill) {
+      const currentProject = await Project.findById(currentProjectId);
+      if (!currentProject) {
+        return res.status(404).json({ message: 'Current project not found' });
+      }
+
+      // Calculate total income (excluding income from other projects)
+      const totalIncome = await calculateTotalIncome(currentProjectId);
+      const remainingPayment = currentProject.budget - totalIncome;
+
+      // Generate PDF document
+      const docDefinition = await generatePdfDefinition(currentProject, incomeEntry, totalIncome);
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      
+      // Convert PDF to buffer
+      const chunks = [];
+      pdfDoc.on('data', chunk => chunks.push(chunk));
+      pdfDoc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        res.status(201).json({
+          incomeEntry,
+          expenseEntry,
+          paymentBill: {
+            data: pdfBuffer.toString('base64'),
+            remainingPayment
+          }
+        });
+      });
+      pdfDoc.end();
+    } else {
+      res.status(201).json({ 
+        incomeEntry,
+        expenseEntry
+      });
+    }
+  } catch (error) {
+    console.error('Error creating income from project:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Add a route to get income from other projects for a specific project
+router.get('/income-from-other-projects/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'userId and projectId are required' });
+    }
+
+    const incomeFromOtherProjects = await Entry.find({
+      userId,
+      projectId,
+      type: 'Income',
+      isIncomeFromOtherProject: true
+    })
+    .populate('sourceProjectId', 'name')
+    .sort({ date: -1 });
+
+    res.status(200).json(incomeFromOtherProjects);
+  } catch (error) {
+    console.error('Get income from other projects error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

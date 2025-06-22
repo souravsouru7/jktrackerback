@@ -237,7 +237,11 @@ router.get('/project-summary', async (req, res) => {
         {
           $match: {
             projectId: project._id,
-            userId: new mongoose.Types.ObjectId(userId)
+            userId: new mongoose.Types.ObjectId(userId),
+            $or: [
+              { type: 'Expense' },
+              { type: 'Income', isIncomeFromOtherProject: { $ne: true } }
+            ]
           }
         },
         {
