@@ -434,7 +434,7 @@ router.get('/project-details/:projectId', async (req, res) => {
 // Generate PDF balance sheet
 router.post('/generate-pdf', async (req, res) => {
   try {
-    const { userId, projectId, selectedCategories } = req.body;
+    const { userId, projectId, selectedCategories, selectedItems } = req.body;
     
     if (!userId || !projectId) {
       return res.status(400).json({ message: 'userId and projectId are required' });
@@ -446,44 +446,247 @@ router.post('/generate-pdf', async (req, res) => {
       return res.status(404).json({ message: 'Project not found' });
     }
 
-    // Fetch entries for selected categories
-    const entries = await Entry.aggregate([
-      {
-        $match: {
-          userId: new mongoose.Types.ObjectId(userId),
-          projectId: new mongoose.Types.ObjectId(projectId),
-          category: { $in: selectedCategories }
+    let entries;
+    if (Array.isArray(selectedItems) && selectedItems.length > 0) {
+      // Use selectedItems (entry IDs) for filtering
+      const entryIds = selectedItems.map(item => new mongoose.Types.ObjectId(item.id));
+      entries = await Entry.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            projectId: new mongoose.Types.ObjectId(projectId),
+            _id: { $in: entryIds }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              type: '$type',
+              category: '$category'
+            },
+            totalAmount: { $sum: '$amount' }
+          }
+        },
+        {
+          $group: {
+            _id: '$_id.type',
+            categories: {
+              $push: {
+                category: '$_id.category',
+                totalAmount: '$totalAmount'
+              }
+            },
+            total: { $sum: '$totalAmount' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: {
-            type: '$type',
-            category: '$category'
-          },
-          totalAmount: { $sum: '$amount' }
+      ]);
+    } else {
+      // Fallback: use selectedCategories (old logic)
+      entries = await Entry.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            projectId: new mongoose.Types.ObjectId(projectId),
+            category: { $in: selectedCategories }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              type: '$type',
+              category: '$category'
+            },
+            totalAmount: { $sum: '$amount' }
+          }
+        },
+        {
+          $group: {
+            _id: '$_id.type',
+            categories: {
+              $push: {
+                category: '$_id.category',
+                totalAmount: '$totalAmount'
+              }
+            },
+            total: { $sum: '$totalAmount' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$_id.type',
-          categories: {
-            $push: {
-              category: '$_id.category',
-              totalAmount: '$totalAmount'
-            }
-          },
-          total: { $sum: '$totalAmount' }
-        }
-      }
-    ]);
+      ]);
+    }
 
     // Process entries data
     const incomeData = entries.find(e => e._id === 'Income') || { categories: [], total: 0 };
     const expenseData = entries.find(e => e._id === 'Expense') || { categories: [], total: 0 };
     const netBalance = incomeData.total - expenseData.total;
 
-    // Create PDF document definition
+    // Build content array dynamically
+    const content = [
+      {
+        columns: [
+          {
+            width: '*',
+            stack: [
+              { text: 'BALANCE SHEET', style: 'mainHeader' },
+              { text: project.name.toUpperCase(), style: 'projectName' },
+              { text: new Date().toLocaleDateString(), style: 'date' }
+            ]
+          }
+        ]
+      },
+      { canvas: [{ type: 'line', x1: 0, y1: 5, x2: 515, y2: 5, lineWidth: 1, lineColor: '#000000' }] },
+      { text: '\n' },
+      {
+        table: {
+          widths: ['*'],
+          body: [
+            [{ text: 'FINANCIAL OVERVIEW', style: 'sectionHeader' }]
+          ]
+        },
+        layout: 'lightHorizontalLines'
+      },
+      { text: '\n' }
+    ];
+
+    // Only add income section if there are income categories
+    if (incomeData.categories.length > 0) {
+      content.push({
+        table: {
+          headerRows: 1,
+          widths: ['*', 'auto', 'auto'],
+          body: [
+            [
+              { text: 'INCOME CATEGORIES', style: 'tableHeader', colSpan: 3, alignment: 'left' },
+              {}, {}
+            ],
+            [
+              { text: 'Category', style: 'tableSubHeader' },
+              { text: 'Amount (₹)', style: 'tableSubHeader', alignment: 'right' },
+              { text: '% of Total', style: 'tableSubHeader', alignment: 'right' }
+            ],
+            ...incomeData.categories.map(item => [
+              { text: item.category, style: 'tableCell' },
+              { text: item.totalAmount.toFixed(2), style: 'tableCell', alignment: 'right' },
+              { 
+                text: incomeData.total > 0 ? ((item.totalAmount / incomeData.total) * 100).toFixed(1) + '%' : '0%',
+                style: 'tableCell',
+                alignment: 'right'
+              }
+            ]),
+            [
+              { text: 'Total Income', style: 'tableTotal' },
+              { text: incomeData.total.toFixed(2), style: 'tableTotal', alignment: 'right' },
+              { text: '100%', style: 'tableTotal', alignment: 'right' }
+            ]
+          ]
+        },
+        layout: {
+          hLineWidth: function(i, node) {
+            return (i === 0 || i === 1 || i === node.table.body.length - 1) ? 1 : 0.5;
+          },
+          vLineWidth: function(i, node) {
+            return 0;
+          },
+          hLineColor: function(i, node) {
+            return (i === 0 || i === 1) ? '#000000' : '#CCCCCC';
+          },
+          paddingLeft: function(i) { return 8; },
+          paddingRight: function(i) { return 8; },
+          paddingTop: function(i) { return 8; },
+          paddingBottom: function(i) { return 8; }
+        }
+      });
+      content.push({ text: '\n' });
+    }
+
+    // Only add expense section if there are expense categories
+    if (expenseData.categories.length > 0) {
+      content.push({
+        table: {
+          headerRows: 1,
+          widths: ['*', 'auto', 'auto'],
+          body: [
+            [
+              { text: 'EXPENSE CATEGORIES', style: 'tableHeader', colSpan: 3, alignment: 'left' },
+              {}, {}
+            ],
+            [
+              { text: 'Category', style: 'tableSubHeader' },
+              { text: 'Amount (₹)', style: 'tableSubHeader', alignment: 'right' },
+              { text: '% of Total', style: 'tableSubHeader', alignment: 'right' }
+            ],
+            ...expenseData.categories.map(item => [
+              { text: item.category, style: 'tableCell' },
+              { text: item.totalAmount.toFixed(2), style: 'tableCell', alignment: 'right' },
+              { 
+                text: expenseData.total > 0 ? ((item.totalAmount / expenseData.total) * 100).toFixed(1) + '%' : '0%',
+                style: 'tableCell',
+                alignment: 'right'
+              }
+            ]),
+            [
+              { text: 'Total Expenses', style: 'tableTotal' },
+              { text: expenseData.total.toFixed(2), style: 'tableTotal', alignment: 'right' },
+              { text: '100%', style: 'tableTotal', alignment: 'right' }
+            ]
+          ]
+        },
+        layout: {
+          hLineWidth: function(i, node) {
+            return (i === 0 || i === 1 || i === node.table.body.length - 1) ? 1 : 0.5;
+          },
+          vLineWidth: function(i, node) {
+            return 0;
+          },
+          hLineColor: function(i, node) {
+            return (i === 0 || i === 1) ? '#000000' : '#CCCCCC';
+          },
+          paddingLeft: function(i) { return 8; },
+          paddingRight: function(i) { return 8; },
+          paddingTop: function(i) { return 8; },
+          paddingBottom: function(i) { return 8; }
+        }
+      });
+      content.push({ text: '\n' });
+    }
+
+    // Always add summary section
+    content.push({
+      table: {
+        widths: ['*', 'auto'],
+        body: [
+          [
+            { text: 'FINANCIAL SUMMARY', style: 'summaryHeader', colSpan: 2 },
+            {}
+          ],
+          [
+            { text: 'Total Income', style: 'summaryRow' },
+            { text: `₹${incomeData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
+          ],
+          [
+            { text: 'Total Expenses', style: 'summaryRow' },
+            { text: `₹${expenseData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
+          ],
+          [
+            { text: 'NET BALANCE', style: 'summaryTotal' },
+            { 
+              text: `₹${netBalance.toFixed(2)}`,
+              style: 'summaryTotal',
+              alignment: 'right',
+              color: netBalance >= 0 ? '#006400' : '#FF0000'
+            }
+          ]
+        ]
+      },
+      layout: {
+        hLineWidth: function(i, node) { return 1; },
+        vLineWidth: function(i, node) { return 0; },
+        hLineColor: function(i, node) { return '#000000'; },
+        fillColor: function(i, node) {
+          return (i === 0) ? '#F8F9FA' : null;
+        }
+      }
+    });
+
     const docDefinition = {
       pageSize: 'A4',
       pageMargins: [40, 60, 40, 60],
@@ -519,124 +722,7 @@ router.post('/generate-pdf', async (req, res) => {
           ]
         };
       },
-      content: [
-        {
-          columns: [
-            {
-              width: '*',
-              stack: [
-                { text: 'BALANCE SHEET', style: 'mainHeader' },
-                { text: project.name.toUpperCase(), style: 'projectName' },
-                { text: new Date().toLocaleDateString(), style: 'date' }
-              ]
-            }
-          ]
-        },
-        { canvas: [{ type: 'line', x1: 0, y1: 5, x2: 515, y2: 5, lineWidth: 1, lineColor: '#000000' }] },
-        { text: '\n' },
-
-        // Financial Overview Section
-        {
-          table: {
-            widths: ['*'],
-            body: [
-              [{ text: 'FINANCIAL OVERVIEW', style: 'sectionHeader' }]
-            ]
-          },
-          layout: 'lightHorizontalLines'
-        },
-        { text: '\n' },
-
-        // Income Section
-        {
-          table: {
-            headerRows: 1,
-            widths: ['*', 'auto', 'auto'],
-            body: [
-              [
-                { text: 'INCOME CATEGORIES', style: 'tableHeader', colSpan: 3, alignment: 'left' },
-                {}, {}
-              ],
-              [
-                { text: 'Category', style: 'tableSubHeader' },
-                { text: 'Amount (₹)', style: 'tableSubHeader', alignment: 'right' },
-                { text: '% of Total', style: 'tableSubHeader', alignment: 'right' }
-              ],
-              ...incomeData.categories.map(item => [
-                { text: item.category, style: 'tableCell' },
-                { text: item.totalAmount.toFixed(2), style: 'tableCell', alignment: 'right' },
-                { 
-                  text: ((item.totalAmount / incomeData.total) * 100).toFixed(1) + '%',
-                  style: 'tableCell',
-                  alignment: 'right'
-                }
-              ]),
-              [
-                { text: 'Total Income', style: 'tableTotal' },
-                { text: incomeData.total.toFixed(2), style: 'tableTotal', alignment: 'right' },
-                { text: '100%', style: 'tableTotal', alignment: 'right' }
-              ]
-            ]
-          },
-          layout: {
-            hLineWidth: function(i, node) {
-              return (i === 0 || i === 1 || i === node.table.body.length - 1) ? 1 : 0.5;
-            },
-            vLineWidth: function(i, node) {
-              return 0;
-            },
-            hLineColor: function(i, node) {
-              return (i === 0 || i === 1) ? '#000000' : '#CCCCCC';
-            },
-            paddingLeft: function(i) { return 8; },
-            paddingRight: function(i) { return 8; },
-            paddingTop: function(i) { return 8; },
-            paddingBottom: function(i) { return 8; }
-          }
-        },
-        { text: '\n' },
-
-        // Expenses Section (similar structure as Income)
-        // ... Similar table structure for expenses ...
-
-        // Summary Section
-        {
-          table: {
-            widths: ['*', 'auto'],
-            body: [
-              [
-                { text: 'FINANCIAL SUMMARY', style: 'summaryHeader', colSpan: 2 },
-                {}
-              ],
-              [
-                { text: 'Total Income', style: 'summaryRow' },
-                { text: `₹${incomeData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
-              ],
-              [
-                { text: 'Total Expenses', style: 'summaryRow' },
-                { text: `₹${expenseData.total.toFixed(2)}`, style: 'summaryRow', alignment: 'right' }
-              ],
-              [
-                { text: 'NET BALANCE', style: 'summaryTotal' },
-                { 
-                  text: `₹${netBalance.toFixed(2)}`,
-                  style: 'summaryTotal',
-                  alignment: 'right',
-                  color: netBalance >= 0 ? '#006400' : '#FF0000'
-                }
-              ]
-            ]
-          },
-          layout: {
-            hLineWidth: function(i, node) { return 1; },
-            vLineWidth: function(i, node) { return 0; },
-            hLineColor: function(i, node) { return '#000000'; },
-            fillColor: function(i, node) {
-              return (i === 0) ? '#F8F9FA' : null;
-            }
-          }
-        }
-      ],
+      content,
       styles: {
         mainHeader: {
           fontSize: 24,
