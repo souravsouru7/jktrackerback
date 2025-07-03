@@ -721,6 +721,18 @@ router.post('/bills/:id/duplicate', auth, async (req, res) => {
         // Update the date to current
         duplicatedBillData.date = new Date();
 
+        // Patch items to ensure 'depth' exists where required
+        if (Array.isArray(duplicatedBillData.items)) {
+            duplicatedBillData.items = duplicatedBillData.items.map(item => {
+                const isSft = item.unit === 'Sft';
+                const isMSorSS = item.particular?.toLowerCase().includes('ms') || item.particular?.toLowerCase().includes('ss');
+                if (isSft && isMSorSS && (item.depth === undefined || item.depth === null)) {
+                    return { ...item, depth: 1 }; // Default to 1 if missing
+                }
+                return item;
+            });
+        }
+
         // Create new bill document
         const duplicatedBill = new InteriorBill(duplicatedBillData);
         
