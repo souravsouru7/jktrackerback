@@ -333,7 +333,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     : 0;
 
                 return [
-                    { text: item.particular || 'N/A', style: 'tableCell', width: 'auto' },
+                    { text: item.particular || 'N/A', style: 'tableCellBold', width: 'auto' },
                     { text: item.description || '', style: 'tableCell', width: 120 },
                     { text: item.unit || 'Lump', style: 'tableCell', width: 35 },
                     { text: item.unit === 'Sft' ? (item.width || 0).toString() : '-', style: 'tableCell', width: 30, alignment: 'right' },
@@ -361,7 +361,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     },
                     { 
                         text: formatCurrency(item.netTotal || (item.total - (safeData.discount || 0) / (safeData.items.length || 1))).replace(/^₹\s*/, ''),
-                        style: 'tableCell',
+                        style: 'tableCellBold',
                         width: 55,
                         alignment: 'right'
                     }
@@ -623,6 +623,12 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     fontSize: 9,
                     color: '#333333',
                     margin: [5, 5, 5, 5]
+                },
+                tableCellBold: {
+                    fontSize: 9,
+                    color: '#333333',
+                    margin: [5, 5, 5, 5],
+                    bold: true
                 },
                 grandTotalLabel: {
                     fontSize: 12,
