@@ -43,6 +43,14 @@ const interiorItemSchema = new mongoose.Schema({
     total: {
         type: Number,
         required: true
+    },
+    discountitem: {
+        type: Number,
+        default: 0
+    },
+    netTotal: {
+        type: Number,
+        default: 0
     }
 });
 

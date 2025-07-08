@@ -67,6 +67,14 @@ router.post('/bills', auth, async (req, res) => {
         const discountAmount = discount || 0;
         const finalAmount = grandTotal - discountAmount;
 
+        // Distribute discount equally among items (always overwrite)
+        const perItemDiscount = calculatedItems.length > 0 ? discountAmount / calculatedItems.length : 0;
+        for (let i = 0; i < calculatedItems.length; i++) {
+            calculatedItems[i].discountitem = perItemDiscount;
+            calculatedItems[i].netTotal = calculatedItems[i].total - perItemDiscount;
+        }
+        console.log('Calculated items before save:', calculatedItems);
+
         // Generate bill number with current timestamp
         const billNumber = 'INT-' + Date.now();
 
@@ -197,6 +205,14 @@ router.put('/bills/:id', auth, async (req, res) => {
         const discountAmount = discount || 0;
         const finalAmount = grandTotal - discountAmount;
 
+        // Distribute discount equally among items (always overwrite)
+        const perItemDiscount = calculatedItems.length > 0 ? discountAmount / calculatedItems.length : 0;
+        for (let i = 0; i < calculatedItems.length; i++) {
+            calculatedItems[i].discountitem = perItemDiscount;
+            calculatedItems[i].netTotal = calculatedItems[i].total - perItemDiscount;
+        }
+        console.log('Calculated items before update:', calculatedItems);
+
         const processedTerms = termsAndConditions.filter(term => term && term.trim() !== '');
 
         const updatedBill = await InteriorBill.findByIdAndUpdate(
@@ -278,7 +294,9 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 height: item.height || 0,
                 depth: item.depth || 0,
                 pricePerUnit: item.pricePerUnit || 0,
-                total: item.total || 0
+                total: item.total || 0,
+                discountitem: item.discountitem || 0,
+                netTotal: item.netTotal || 0
             })) || [],
             grandTotal: bill.grandTotal || 0,
             discount: bill.discount || 0,
@@ -293,15 +311,17 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
         const tableBody = [
             [
                 { text: 'Particular', style: 'tableHeader', width: 'auto' },
-                { text: 'Description', style: 'tableHeader', width: '*' },
-                { text: 'Unit', style: 'tableHeader', width: 'auto' },
-                { text: 'Width', style: 'tableHeader', width: 'auto', alignment: 'right' },
-                { text: 'Height', style: 'tableHeader', width: 'auto', alignment: 'right' },
-                { text: 'Depth', style: 'tableHeader', width: 'auto', alignment: 'right' },
-                { text: 'Sft', style: 'tableHeader', width: 'auto', alignment: 'right' },
-                { text: 'Qty', style: 'tableHeader', width: 'auto', alignment: 'right' },
-                { text: 'Price', style: 'tableHeader', width: 'auto', alignment: 'right' },
-                { text: 'Total', style: 'tableHeader', width: 'auto', alignment: 'right' }
+                { text: 'Description', style: 'tableHeader', width: 120 },
+                { text: 'Unit', style: 'tableHeader', width: 35 },
+                { text: 'Width', style: 'tableHeader', width: 30, alignment: 'right' },
+                { text: 'Height', style: 'tableHeader', width: 30, alignment: 'right' },
+                { text: 'Depth', style: 'tableHeader', width: 30, alignment: 'right' },
+                { text: 'Sft', style: 'tableHeader', width: 35, alignment: 'right' },
+                { text: 'Qty', style: 'tableHeader', width: 30, alignment: 'right' },
+                { text: 'Price', style: 'tableHeader', width: 40, alignment: 'right' },
+                { text: 'Total', style: 'tableHeader', width: 45, alignment: 'right' },
+                { text: 'Discount', style: 'tableHeader', width: 45, alignment: 'right' },
+                { text: 'Net Total', style: 'tableHeader', width: 55, alignment: 'right' }
             ],
             ...safeData.items.map(item => {
                 // Calculate square feet based on material type
@@ -314,23 +334,35 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
 
                 return [
                     { text: item.particular || 'N/A', style: 'tableCell', width: 'auto' },
-                    { text: item.description || '', style: 'tableCell', width: '*' },
-                    { text: item.unit || 'Lump', style: 'tableCell', width: 'auto' },
-                    { text: item.unit === 'Sft' ? (item.width || 0).toString() : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
-                    { text: item.unit === 'Sft' ? (item.height || 0).toString() : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
-                    { text: item.unit === 'Sft' && isMSorSS ? (item.depth || 0).toString() : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
-                    { text: item.unit === 'Sft' ? squareFeet.toFixed(2) : '-', style: 'tableCell', width: 'auto', alignment: 'right' },
-                    { text: (item.quantity || 0).toString(), style: 'tableCell', width: 'auto', alignment: 'right' },
+                    { text: item.description || '', style: 'tableCell', width: 120 },
+                    { text: item.unit || 'Lump', style: 'tableCell', width: 35 },
+                    { text: item.unit === 'Sft' ? (item.width || 0).toString() : '-', style: 'tableCell', width: 30, alignment: 'right' },
+                    { text: item.unit === 'Sft' ? (item.height || 0).toString() : '-', style: 'tableCell', width: 30, alignment: 'right' },
+                    { text: item.unit === 'Sft' && isMSorSS ? (item.depth || 0).toString() : '-', style: 'tableCell', width: 30, alignment: 'right' },
+                    { text: item.unit === 'Sft' ? squareFeet.toFixed(2) : '-', style: 'tableCell', width: 35, alignment: 'right' },
+                    { text: (item.quantity || 0).toString(), style: 'tableCell', width: 30, alignment: 'right' },
                     { 
                         text: formatCurrency(item.pricePerUnit || 0).replace(/^₹\s*/, ''),
                         style: 'tableCell',
-                        width: 'auto',
+                        width: 40,
                         alignment: 'right'
                     },
                     { 
                         text: formatCurrency(item.total || 0).replace(/^₹\s*/, ''),
                         style: 'tableCell',
-                        width: 'auto',
+                        width: 45,
+                        alignment: 'right'
+                    },
+                    { 
+                        text: formatCurrency(item.discountitem || 0).replace(/^₹\s*/, ''),
+                        style: 'tableCell',
+                        width: 45,
+                        alignment: 'right'
+                    },
+                    { 
+                        text: formatCurrency(item.netTotal || (item.total - (safeData.discount || 0) / (safeData.items.length || 1))).replace(/^₹\s*/, ''),
+                        style: 'tableCell',
+                        width: 55,
                         alignment: 'right'
                     }
                 ];
@@ -338,8 +370,8 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
         ];
 
         const docDefinition = {
-            pageSize: 'A4',
-            pageMargins: [40, 40, 40, 60],
+            pageSize: 'A3',
+            pageMargins: [10, 40, 10, 40],
             defaultStyle: {
                 font: 'Helvetica'
             },
@@ -455,7 +487,20 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                     style: 'itemsTable',
                     table: {
                         headerRows: 1,
-                        widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+                        widths: [
+                          'auto',      // Particular
+                          '*',         // Description
+                          35,          // Unit
+                          30,          // Width
+                          30,          // Height
+                          30,          // Depth
+                          35,          // Sft
+                          30,          // Qty
+                          40,          // Price
+                          45,          // Total
+                          45,          // Discount
+                          55           // Net Total
+                        ],
                         body: tableBody
                     },
                     layout: {
@@ -569,13 +614,13 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
                 },
                 tableHeader: {
                     bold: true,
-                    fontSize: 11,
+                    fontSize: 10,
                     color: '#7F5539',
                     fillColor: '#F5EBE0',
                     margin: [5, 8, 5, 8]
                 },
                 tableCell: {
-                    fontSize: 10,
+                    fontSize: 9,
                     color: '#333333',
                     margin: [5, 5, 5, 5]
                 },
