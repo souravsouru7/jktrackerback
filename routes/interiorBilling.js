@@ -186,7 +186,7 @@ router.put('/bills/:id', auth, async (req, res) => {
                     throw new Error('Width and height are required for Sft units');
                 }
                 // Check if material is MS or SS
-                const isMSorSS = item.description?.toLowerCase().includes('ms') || item.description?.toLowerCase().includes('ss');
+                const isMSorSS = item.particular?.toLowerCase().includes('ms') || item.particular?.toLowerCase().includes('ss');
                 processedItem.squareFeet = isMSorSS 
                     ? item.width * item.height * (item.depth || 1)
                     : item.width * item.height;
@@ -325,7 +325,7 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
             ],
             ...safeData.items.map(item => {
                 // Calculate square feet based on material type
-                const isMSorSS = item.description?.toLowerCase().includes('ms') || item.description?.toLowerCase().includes('ss');
+                const isMSorSS = item.particular?.toLowerCase().includes('ms') || item.particular?.toLowerCase().includes('ss');
                 const squareFeet = item.unit === 'Sft' 
                     ? (isMSorSS 
                         ? (item.width || 0) * (item.height || 0) * (item.depth || 1)
