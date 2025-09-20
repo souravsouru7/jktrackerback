@@ -75,8 +75,26 @@ router.post('/bills', auth, async (req, res) => {
         }
         console.log('Calculated items before save:', calculatedItems);
 
-        // Generate bill number with current timestamp
-        const billNumber = 'INT-' + Date.now();
+        // Generate sequential bill number
+        // Find all bills and get the highest numeric value
+        const allBills = await InteriorBill.find({}, 'billNumber').sort({ billNumber: -1 });
+        let maxNumber = 0;
+        
+        for (const bill of allBills) {
+            if (bill.billNumber && bill.billNumber.startsWith('INT-')) {
+                const numberPart = bill.billNumber.replace('INT-', '');
+                // Check if it's a 6-digit number (new format)
+                if (numberPart.match(/^\d{6}$/)) {
+                    const num = parseInt(numberPart);
+                    if (num > maxNumber) {
+                        maxNumber = num;
+                    }
+                }
+            }
+        }
+        
+        const nextNumber = maxNumber + 1;
+        const billNumber = 'INT-' + nextNumber.toString().padStart(6, '0');
 
         const bill = new InteriorBill({
             billNumber,
@@ -262,6 +280,14 @@ router.put('/bills/:id', auth, async (req, res) => {
 // Generate PDF for bill
 router.get('/bills/:id/pdf', auth, async (req, res) => {
     try {
+        console.log('=== PDF ROUTE CALLED ===');
+        console.log('Requested Bill ID:', req.params.id);
+        console.log('Request URL:', req.url);
+        console.log('Request Method:', req.method);
+        console.log('Full URL:', req.protocol + '://' + req.get('host') + req.originalUrl);
+        console.log('User Agent:', req.get('User-Agent'));
+        console.log('========================');
+        
         const bill = await InteriorBill.findById(req.params.id);
         if (!bill) {
             return res.status(404).json({ 
@@ -710,24 +736,78 @@ router.get('/bills/:id/pdf', auth, async (req, res) => {
             }
         };
 
-        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+        // Clean client name for filename (remove special characters and spaces)
+        const cleanClientName = safeData.clientName.replace(/[^a-zA-Z0-9]/g, '_');
+        const timestamp = Date.now();
+        const randomId = Math.random().toString(36).substring(2, 8);
+        const filename = `${cleanClientName}_${safeData.documentType.toLowerCase()}_${randomId}.pdf`;
+        
+        // Add cache-busting query parameter to the response
+        const cacheBuster = `?v=${timestamp}&cb=${randomId}`;
+        console.log('=== PDF GENERATION DEBUG ===');
+        console.log('Bill ID:', req.params.id);
+        console.log('Client Name:', safeData.clientName);
+        console.log('Document Type:', safeData.documentType);
+        console.log('Clean Client Name:', cleanClientName);
+        console.log('Generated Filename:', filename);
+        console.log('===========================');
 
-        // Set response headers
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=interior-bill-${safeData.billNumber}.pdf`);
+        // Set response headers BEFORE creating the PDF document
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Last-Modified', new Date().toUTCString());
+        res.setHeader('ETag', `"${timestamp}"`);
+        
+        // Use res.attachment() for proper file download handling
+        res.attachment(filename);
+        
+        // Also set Content-Disposition manually as backup
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+        
+        // Log the headers being set
+        console.log('Headers set:', {
+            'Content-Type': res.getHeader('Content-Type'),
+            'Content-Disposition': res.getHeader('Content-Disposition'),
+            'Cache-Control': res.getHeader('Cache-Control')
+        });
+
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
         // Create a promise to handle the PDF generation
         return new Promise((resolve, reject) => {
             const chunks = [];
             
-            pdfDoc.on('data', chunk => chunks.push(chunk));
+            pdfDoc.on('data', chunk => {
+                chunks.push(chunk);
+            });
             pdfDoc.on('end', () => {
                 const pdfBuffer = Buffer.concat(chunks);
-                res.send(pdfBuffer);
+                
+                // Send the PDF with explicit headers
+                res.writeHead(200, {
+                    'Content-Type': 'application/pdf',
+                    'Content-Disposition': `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+                    'Content-Length': pdfBuffer.length,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate, private, max-age=0',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                    'Last-Modified': new Date().toUTCString(),
+                    'ETag': `"${timestamp}-${randomId}"`
+                });
+                
+                res.end(pdfBuffer);
                 resolve();
             });
             pdfDoc.on('error', err => {
                 console.error('PDF Generation Error:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ 
+                        success: false,
+                        message: 'Error generating PDF',
+                        error: err.message 
+                    });
+                }
                 reject(err);
             });
 
@@ -762,8 +842,27 @@ router.post('/bills/:id/duplicate', auth, async (req, res) => {
         delete duplicatedBillData._id;
         delete duplicatedBillData.billNumber;
         
-        // Generate new bill number with current timestamp
-        duplicatedBillData.billNumber = 'INT-' + Date.now();
+        // Generate sequential bill number for duplicate
+        // Find all bills and get the highest numeric value
+        const allBills = await InteriorBill.find({}, 'billNumber').sort({ billNumber: -1 });
+        let maxNumber = 0;
+        
+        for (const bill of allBills) {
+            if (bill.billNumber && bill.billNumber.startsWith('INT-')) {
+                const numberPart = bill.billNumber.replace('INT-', '');
+                // Check if it's a 6-digit number (new format)
+                if (numberPart.match(/^\d{6}$/)) {
+                    const num = parseInt(numberPart);
+                    if (num > maxNumber) {
+                        maxNumber = num;
+                    }
+                }
+            }
+        }
+        
+        const nextNumber = maxNumber + 1;
+        const billNumber = 'INT-' + nextNumber.toString().padStart(6, '0');
+        duplicatedBillData.billNumber = billNumber;
         
         // Set the bill type as DUPLICATE and store reference to original
         duplicatedBillData.billType = 'DUPLICATE';
@@ -916,6 +1015,100 @@ router.get('/projects/:projectId/bills', auth, async (req, res) => {
             message: 'Error fetching project bills',
             error: error.message
         });
+    }
+});
+
+// Alternative PDF route with different path to force fresh download
+router.get('/bills/:id/download', auth, async (req, res) => {
+    try {
+        console.log('=== ALTERNATIVE PDF ROUTE CALLED ===');
+        console.log('Requested Bill ID:', req.params.id);
+        console.log('Request URL:', req.url);
+        console.log('Request Method:', req.method);
+        console.log('Full URL:', req.protocol + '://' + req.get('host') + req.originalUrl);
+        console.log('=====================================');
+        
+        const bill = await InteriorBill.findById(req.params.id);
+        if (!bill) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'Bill not found' 
+            });
+        }
+
+        // Ensure all required fields exist with fallbacks
+        const safeData = {
+            companyDetails: {
+                name: bill.companyDetails?.name || 'JK Interiors',
+                address: bill.companyDetails?.address || '',
+                phones: Array.isArray(bill.companyDetails?.phones) ? bill.companyDetails.phones : []
+            },
+            billNumber: bill.billNumber || 'N/A',
+            date: bill.date || new Date(),
+            title: bill.title || 'None',
+            clientName: bill.clientName || 'N/A',
+            clientPhone: bill.clientPhone || 'N/A',
+            clientEmail: bill.clientEmail || 'N/A',
+            clientAddress: bill.clientAddress || 'N/A',
+            documentType: bill.documentType || 'Invoice',
+            items: bill.items?.map(item => ({
+                particular: item.particular || 'N/A',
+                description: item.description || '',
+                unit: item.unit || 'Lump',
+                quantity: item.quantity || 1,
+                width: item.width || 0,
+                height: item.height || 0,
+                depth: item.depth || 0,
+                pricePerUnit: item.pricePerUnit || 0,
+                total: item.total || 0,
+                discountitem: item.discountitem || 0,
+                netTotal: item.netTotal || 0
+            })) || [],
+            grandTotal: bill.grandTotal || 0,
+            discount: bill.discount || 0,
+            finalAmount: bill.finalAmount || 0,
+            termsAndConditions: Array.isArray(bill.termsAndConditions) ? 
+                bill.termsAndConditions.filter(term => term && term.trim() !== '') : []
+        };
+
+        // Clean client name for filename
+        const cleanClientName = safeData.clientName.replace(/[^a-zA-Z0-9]/g, '_');
+        const timestamp = Date.now();
+        const randomId = Math.random().toString(36).substring(2, 8);
+        const filename = `${cleanClientName}_${safeData.documentType.toLowerCase()}_${randomId}.pdf`;
+        
+        console.log('Alternative PDF Filename:', filename);
+        
+        // Set headers immediately
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        
+        // Generate PDF using the same logic as the main route
+        const docDefinition = {
+            pageSize: 'A3',
+            pageMargins: [10, 40, 10, 40],
+            content: [
+                { text: `Bill: ${safeData.billNumber}`, fontSize: 16, bold: true },
+                { text: `Client: ${safeData.clientName}`, fontSize: 14 },
+                { text: `Date: ${safeData.date.toLocaleDateString()}`, fontSize: 12 },
+                { text: 'This is a test PDF with client name filename', fontSize: 10, margin: [0, 20, 0, 0] }
+            ]
+        };
+        
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+        pdfDoc.pipe(res);
+        pdfDoc.end();
+        
+    } catch (error) {
+        console.error('Alternative PDF Generation Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ 
+                success: false,
+                message: 'Error generating PDF',
+                error: error.message 
+            });
+        }
     }
 });
 
