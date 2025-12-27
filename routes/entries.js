@@ -559,6 +559,309 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Generate PDF bill for all entries in a project
+router.get('/export-bill/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    
+    if (!projectId) {
+      return res.status(400).json({ message: 'projectId is required' });
+    }
+
+    // Fetch all entries for the project
+    const entries = await Entry.find({ projectId })
+      .sort({ date: -1 })
+      .populate('userId', 'name email')
+      .lean();
+
+    if (!entries || entries.length === 0) {
+      return res.status(404).json({ message: 'No entries found for this project' });
+    }
+
+    // Get project details
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Calculate totals
+    const totalIncome = entries
+      .filter(entry => entry.type === 'Income' && !entry.isIncomeFromOtherProject)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+      
+    const totalIncomeFromOtherProjects = entries
+      .filter(entry => entry.type === 'Income' && entry.isIncomeFromOtherProject)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+      
+    const totalExpense = entries
+      .filter(entry => entry.type === 'Expense')
+      .reduce((sum, entry) => sum + entry.amount, 0);
+      
+    const netTotal = totalIncome - totalExpense;
+    const remainingPayment = project.budget - totalIncome;
+
+    // Define fonts using standard fonts
+    const fonts = {
+      Helvetica: {
+        normal: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        italics: 'Helvetica-Oblique',
+        bolditalics: 'Helvetica-BoldOblique'
+      }
+    };
+
+    // Create PDF printer instance
+    const printer = new PdfPrinter(fonts);
+
+    // Company details
+    const companyDetails = {
+      name: 'JK Interiors',
+      address: '502, Spellbound towers,Sainikpuri,Secunderabad,Telangana 501301',
+      phones: ['080-41154115', '+91 9845157333']
+    };
+
+    // Create PDF definition
+    const docDefinition = {
+      pageSize: 'A4',
+      pageMargins: [40, 80, 40, 60],
+      defaultStyle: {
+        font: 'Helvetica'
+      },
+      footer: function(currentPage, pageCount) {
+        return {
+          columns: [
+            { text: 'Page ' + currentPage.toString() + ' of ' + pageCount, alignment: 'center', style: 'pageNumber' }
+          ],
+          margin: [40, 0]
+        };
+      },
+      content: [
+        // Company Header
+        {
+          columns: [
+            {
+              width: 80,
+              height: 80,
+              image: path.join(__dirname, '..', 'assets', 'jk.png'),
+              margin: [0, 0, 0, 10]
+            },
+            {
+              width: '*',
+              stack: [
+                { text: companyDetails.name, style: 'companyName', alignment: 'right' },
+                { text: companyDetails.address, style: 'companyDetails', alignment: 'right' },
+                { text: companyDetails.phones.join(' | '), style: 'companyDetails', alignment: 'right' }
+              ],
+              margin: [0, 0, 0, 10]
+            }
+          ],
+          margin: [0, 0, 0, 20]
+        },
+        // Project Summary Header
+        {
+          text: 'PROJECT SUMMARY BILL',
+          style: 'mainHeader',
+          alignment: 'center',
+          margin: [0, 20, 0, 20]
+        },
+        // Project Details in a box
+        {
+          style: 'billDetails',
+          table: {
+            widths: ['*', '*'],
+            body: [
+              [
+                { text: `Project: ${project.name}`, style: 'billDetailsCell' },
+                { text: `Date: ${new Date().toLocaleDateString('en-IN')}`, style: 'billDetailsCell', alignment: 'right' }
+              ],
+              [
+                { text: `Project ID: ${project._id}`, style: 'billDetailsCell' },
+                { text: `Status: ${project.status}`, style: 'billDetailsCell', alignment: 'right' }
+              ]
+            ]
+          },
+          layout: {
+            hLineWidth: function(i, node) { return 0.5; },
+            vLineWidth: function(i, node) { return 0.5; },
+            hLineColor: function(i, node) { return '#7F5539'; },
+            vLineColor: function(i, node) { return '#7F5539'; },
+            paddingLeft: function(i, node) { return 15; },
+            paddingRight: function(i, node) { return 15; },
+            paddingTop: function(i, node) { return 12; },
+            paddingBottom: function(i, node) { return 12; }
+          },
+          margin: [0, 0, 0, 20]
+        },
+        // Financial Summary
+        {
+          style: 'summaryTable',
+          table: {
+            headerRows: 1,
+            widths: ['*', 'auto'],
+            body: [
+              [
+                { text: 'Financial Summary', style: 'tableHeader', colSpan: 2 },
+                {}
+              ],
+              [
+                { text: 'Total Budget', style: 'tableCell' },
+                { text: formatCurrency(project.budget), style: 'tableCell', alignment: 'right' }
+              ],
+              [
+                { text: 'Total Income', style: 'tableCell' },
+                { text: formatCurrency(totalIncome), style: 'tableCell', alignment: 'right' }
+              ],
+              [
+                { text: 'Income from Other Projects', style: 'tableCell' },
+                { text: formatCurrency(totalIncomeFromOtherProjects), style: 'tableCell', alignment: 'right' }
+              ],
+              [
+                { text: 'Total Expenses', style: 'tableCell' },
+                { text: formatCurrency(totalExpense), style: 'tableCell', alignment: 'right' }
+              ],
+              [
+                { text: 'Net Total', style: 'tableCell', bold: true },
+                { text: formatCurrency(netTotal), style: 'tableCell', alignment: 'right', bold: true }
+              ],
+              [
+                { text: 'Remaining Payment', style: 'tableCell' },
+                { text: formatCurrency(remainingPayment), style: 'tableCell', alignment: 'right' }
+              ]
+            ]
+          },
+          layout: {
+            hLineWidth: function(i, node) { return (i === 0 || i === node.table.body.length) ? 2 : 1; },
+            vLineWidth: function(i, node) { return 1; },
+            hLineColor: function(i, node) { return '#7F5539'; },
+            vLineColor: function(i, node) { return '#7F5539'; },
+            fillColor: function(rowIndex, node, columnIndex) {
+              return (rowIndex === 0) ? '#F5EBE0' : null;
+            }
+          },
+          margin: [0, 0, 0, 20]
+        },
+        // All Entries Table
+        {
+          text: 'All Entries',
+          style: 'sectionHeader',
+          margin: [0, 0, 0, 10]
+        },
+        {
+          style: 'entriesTable',
+          table: {
+            headerRows: 1,
+            widths: ['auto', '*', 'auto', 'auto'],
+            body: [
+              [
+                { text: 'Date', style: 'tableHeader' },
+                { text: 'Description', style: 'tableHeader' },
+                { text: 'Category', style: 'tableHeader' },
+                { text: 'Amount', style: 'tableHeader' }
+              ],
+              ...entries.map(entry => [
+                { text: new Date(entry.date).toLocaleDateString('en-IN'), style: 'tableCell' },
+                { text: entry.description || '', style: 'tableCell' },
+                { text: entry.category, style: 'tableCell' },
+                { 
+                  text: `${entry.type === 'Income' ? '+' : '-'}${formatCurrency(entry.amount)}`, 
+                  style: 'tableCell', 
+                  alignment: 'right',
+                  color: entry.type === 'Income' ? 'green' : 'red'
+                }
+              ])
+            ]
+          },
+          layout: {
+            hLineWidth: function(i, node) { return (i === 0) ? 2 : 1; },
+            vLineWidth: function(i, node) { return 1; },
+            hLineColor: function(i, node) { return '#7F5539'; },
+            vLineColor: function(i, node) { return '#7F5539'; },
+            fillColor: function(rowIndex, node, columnIndex) {
+              return (rowIndex === 0) ? '#F5EBE0' : null;
+            }
+          }
+        },
+        // Footer
+        {
+          stack: [
+            { text: 'Thanking you,', style: 'footer', alignment: 'center' },
+            { text: companyDetails.name, style: 'footerCompany', alignment: 'center' }
+          ],
+          margin: [0, 20, 0, 0]
+        }
+      ],
+      styles: {
+        companyName: {
+          fontSize: 24,
+          bold: true,
+          color: '#7F5539'
+        },
+        companyDetails: {
+          fontSize: 11,
+          color: '#9C6644',
+          margin: [0, 5, 0, 0]
+        },
+        mainHeader: {
+          fontSize: 20,
+          bold: true,
+          color: '#7F5539'
+        },
+        billDetailsCell: {
+          fontSize: 11,
+          color: '#7F5539'
+        },
+        tableHeader: {
+          bold: true,
+          fontSize: 11,
+          color: '#7F5539',
+          fillColor: '#F5EBE0',
+          margin: [5, 8, 5, 8]
+        },
+        tableCell: {
+          fontSize: 10,
+          color: '#333333',
+          margin: [5, 5, 5, 5]
+        },
+        sectionHeader: {
+          fontSize: 14,
+          bold: true,
+          color: '#7F5539',
+          margin: [0, 10, 0, 5]
+        },
+        footer: {
+          fontSize: 12,
+          color: '#7F5539',
+          margin: [0, 40, 0, 10]
+        },
+        footerCompany: {
+          fontSize: 14,
+          bold: true,
+          color: '#7F5539',
+          margin: [0, 5, 0, 0]
+        },
+        pageNumber: {
+          fontSize: 10,
+          color: '#7F5539',
+          margin: [0, 10, 0, 0]
+        }
+      }
+    };
+
+    // Generate PDF
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+    
+    // Set response headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=project-summary-bill-${projectId}.pdf`);
+
+    // Pipe the PDF document to the response
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Generate Excel for project entries
 router.get('/export/:projectId', async (req, res) => {
   try {
