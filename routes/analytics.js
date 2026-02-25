@@ -6,27 +6,30 @@ const Entry = require('../models/Entry');
 // Monthly Expenses Breakdown for specific project
 router.get('/monthly-expenses', async (req, res) => {
   try {
-    const { userId, projectId } = req.query;
+    const { userId, projectId, year } = req.query;
     if (!userId || !projectId) {
       return res.status(400).json({ message: 'userId and projectId are required' });
     }
 
+    const selectedYear = year ? parseInt(year) : new Date().getFullYear();
+
     const expenses = await Entry.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           userId: new mongoose.Types.ObjectId(userId),
           projectId: new mongoose.Types.ObjectId(projectId),
-          type: 'Expense' 
-        } 
+          type: 'Expense',
+          $expr: { $eq: [{ $year: '$date' }, selectedYear] }
+        }
       },
-      { 
-        $group: { 
-          _id: { 
-            month: { $month: '$date' }, 
-            year: { $year: '$date' } 
-          }, 
-          amount: { $sum: '$amount' } 
-        } 
+      {
+        $group: {
+          _id: {
+            month: { $month: '$date' },
+            year: { $year: '$date' }
+          },
+          amount: { $sum: '$amount' }
+        }
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } },
       {
@@ -59,27 +62,30 @@ router.get('/monthly-expenses', async (req, res) => {
 // Income vs Expense Comparison for specific project
 router.get('/income-vs-expense', async (req, res) => {
   try {
-    const { userId, projectId } = req.query;
+    const { userId, projectId, year } = req.query;
     if (!userId || !projectId) {
       return res.status(400).json({ message: 'userId and projectId are required' });
     }
 
+    const selectedYear = year ? parseInt(year) : new Date().getFullYear();
+
     const comparison = await Entry.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           userId: new mongoose.Types.ObjectId(userId),
           projectId: new mongoose.Types.ObjectId(projectId),
+          $expr: { $eq: [{ $year: '$date' }, selectedYear] },
           $or: [
             { type: 'Expense' },
             { type: 'Income', isIncomeFromOtherProject: { $ne: true } }
           ]
-        } 
+        }
       },
-      { 
-        $group: { 
-          _id: '$type', 
-          value: { $sum: '$amount' } 
-        } 
+      {
+        $group: {
+          _id: '$type',
+          value: { $sum: '$amount' }
+        }
       },
       {
         $project: {
@@ -99,24 +105,27 @@ router.get('/income-vs-expense', async (req, res) => {
 // Category-wise Expense Distribution for specific project
 router.get('/category-expenses', async (req, res) => {
   try {
-    const { userId, projectId } = req.query;
+    const { userId, projectId, year } = req.query;
     if (!userId || !projectId) {
       return res.status(400).json({ message: 'userId and projectId are required' });
     }
 
+    const selectedYear = year ? parseInt(year) : new Date().getFullYear();
+
     const categoryExpenses = await Entry.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           userId: new mongoose.Types.ObjectId(userId),
           projectId: new mongoose.Types.ObjectId(projectId),
-          type: 'Expense' 
-        } 
+          type: 'Expense',
+          $expr: { $eq: [{ $year: '$date' }, selectedYear] }
+        }
       },
-      { 
-        $group: { 
-          _id: '$category', 
-          total: { $sum: '$amount' } 
-        } 
+      {
+        $group: {
+          _id: '$category',
+          total: { $sum: '$amount' }
+        }
       },
       { $sort: { total: -1 } }
     ]);
@@ -130,33 +139,36 @@ router.get('/category-expenses', async (req, res) => {
 // Monthly trend (both income and expenses) for specific project
 router.get('/monthly-trend', async (req, res) => {
   try {
-    const { userId, projectId } = req.query;
+    const { userId, projectId, year } = req.query;
     if (!userId || !projectId) {
       return res.status(400).json({ message: 'userId and projectId are required' });
     }
 
+    const selectedYear = year ? parseInt(year) : new Date().getFullYear();
+
     const monthlyTrend = await Entry.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           userId: new mongoose.Types.ObjectId(userId),
-          projectId: new mongoose.Types.ObjectId(projectId)
-        } 
+          projectId: new mongoose.Types.ObjectId(projectId),
+          $expr: { $eq: [{ $year: '$date' }, selectedYear] }
+        }
       },
-      { 
-        $group: { 
-          _id: { 
-            month: { $month: '$date' }, 
+      {
+        $group: {
+          _id: {
+            month: { $month: '$date' },
             year: { $year: '$date' },
             type: '$type'
-          }, 
-          total: { $sum: '$amount' } 
-        } 
+          },
+          total: { $sum: '$amount' }
+        }
       },
-      { 
-        $sort: { 
-          '_id.year': 1, 
-          '_id.month': 1 
-        } 
+      {
+        $sort: {
+          '_id.year': 1,
+          '_id.month': 1
+        }
       }
     ]);
 
@@ -169,24 +181,27 @@ router.get('/monthly-trend', async (req, res) => {
 // Category-wise Expense Analysis
 router.get('/category-analysis', async (req, res) => {
   try {
-    const { userId, projectId } = req.query;
+    const { userId, projectId, year } = req.query;
     if (!userId || !projectId) {
       return res.status(400).json({ message: 'userId and projectId are required' });
     }
 
+    const selectedYear = year ? parseInt(year) : new Date().getFullYear();
+
     const categoryAnalysis = await Entry.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           userId: new mongoose.Types.ObjectId(userId),
           projectId: new mongoose.Types.ObjectId(projectId),
-          type: 'Expense'  // Only get expenses
-        } 
+          type: 'Expense',
+          $expr: { $eq: [{ $year: '$date' }, selectedYear] }
+        }
       },
-      { 
-        $group: { 
+      {
+        $group: {
           _id: '$category',
-          value: { $sum: '$amount' } 
-        } 
+          value: { $sum: '$amount' }
+        }
       },
       {
         $project: {
@@ -196,7 +211,7 @@ router.get('/category-analysis', async (req, res) => {
         }
       },
       {
-        $sort: { value: -1 }  // Sort by highest expense first
+        $sort: { value: -1 }
       }
     ]);
 

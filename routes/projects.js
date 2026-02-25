@@ -23,9 +23,9 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ message: 'Invalid status value' });
     }
 
-    const project = new Project({ 
-      userId, 
-      name, 
+    const project = new Project({
+      userId,
+      name,
       description,
       budget: budget || 0,
       status: status || 'Under Disscussion'
@@ -64,7 +64,7 @@ router.delete('/:id', auth, async (req, res) => {
 
     // Delete associated entries
     await Entry.deleteMany({ projectId: project._id });
-    
+
     // Delete project
     await Project.findByIdAndDelete(project._id);
 
@@ -222,15 +222,15 @@ router.get('/user/total-calculations', auth, async (req, res) => {
 
 router.get('/project-summary', async (req, res) => {
   try {
-    const { userId } = req.query;
+    const { userId, year } = req.query;
 
     if (!userId) {
       return res.status(400).json({ message: 'userId is required' });
     }
 
+    const selectedYear = year ? parseInt(year) : new Date().getFullYear();
 
     const projects = await Project.find({ userId });
-
 
     const projectSummaries = await Promise.all(projects.map(async (project) => {
       const entries = await Entry.aggregate([
@@ -238,6 +238,7 @@ router.get('/project-summary', async (req, res) => {
           $match: {
             projectId: project._id,
             userId: new mongoose.Types.ObjectId(userId),
+            $expr: { $eq: [{ $year: '$date' }, selectedYear] },
             $or: [
               { type: 'Expense' },
               { type: 'Income', isIncomeFromOtherProject: { $ne: true } }
