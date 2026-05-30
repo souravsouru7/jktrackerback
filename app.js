@@ -27,14 +27,30 @@ const defaultAllowedOrigins = [
   'https://www.jktracker.online',
 ];
 const corsAllowedOrigins = [...new Set([...defaultAllowedOrigins, ...allowedOrigins])];
+const isAllowedOrigin = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (corsAllowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return protocol === 'https:' && (hostname === 'jktracker.online' || hostname.endsWith('.jktracker.online'));
+  } catch (error) {
+    return false;
+  }
+};
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || corsAllowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
 
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
