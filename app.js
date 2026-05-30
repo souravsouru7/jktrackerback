@@ -20,7 +20,12 @@ const allowedOrigins = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-const defaultAllowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const defaultAllowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://jktracker.online',
+  'https://www.jktracker.online',
+];
 const corsAllowedOrigins = [...new Set([...defaultAllowedOrigins, ...allowedOrigins])];
 
 const corsOptions = {
