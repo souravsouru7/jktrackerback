@@ -16,13 +16,28 @@ const categoryRoutes = require('./routes/categories');
 // Add this line
 let cors=require("cors");
 connectionDB()
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const defaultAllowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const corsAllowedOrigins = [...new Set([...defaultAllowedOrigins, ...allowedOrigins])];
+
 const corsOptions = {
-  origin: '*', 
+  origin: (origin, callback) => {
+    if (!origin || corsAllowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
 };
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use((err,req,res,next)=>{
     console.error(err.stack);
